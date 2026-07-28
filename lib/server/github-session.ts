@@ -9,6 +9,7 @@ import type { PullRequestActor } from "../types";
 const AUTH_COOKIE = "hype_github_session";
 const OAUTH_COOKIE = "hype_github_oauth";
 const REFRESH_EARLY_MS = 2 * 60 * 1000;
+const FALLBACK_SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 export interface GitHubSession {
   tokenSet: TokenSet;
@@ -90,11 +91,7 @@ export async function writeGitHubSession(
   }
 
   const cookieStore = await cookies();
-  const maxAge = secondsUntil(
-    session.tokenSet.refreshTokenExpiresAt ??
-      session.tokenSet.expiresAt ??
-      new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-  );
+  const maxAge = sessionCookieMaxAge(session.tokenSet);
   cookieStore.set(AUTH_COOKIE, await seal(session, sessionSecret), {
     httpOnly: true,
     maxAge,
@@ -102,6 +99,17 @@ export async function writeGitHubSession(
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
   });
+}
+
+export function sessionCookieMaxAge(
+  tokenSet: TokenSet,
+  now = Date.now(),
+): number {
+  const tokenExpiry =
+    tokenSet.refreshTokenExpiresAt ?? tokenSet.expiresAt ?? null;
+  return tokenExpiry
+    ? secondsUntil(tokenExpiry, now)
+    : FALLBACK_SESSION_SECONDS;
 }
 
 export async function clearGitHubSession(): Promise<void> {
@@ -268,9 +276,9 @@ function fromBase64Url(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function secondsUntil(value: string): number {
+function secondsUntil(value: string, now = Date.now()): number {
   return Math.max(
     60,
-    Math.floor((new Date(value).getTime() - Date.now()) / 1000),
+    Math.floor((new Date(value).getTime() - now) / 1000),
   );
 }

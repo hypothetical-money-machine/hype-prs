@@ -98,9 +98,8 @@ export function PrWorkspace({
   const [connection, setConnection] =
     useState<ConnectionStatus>(INITIAL_CONNECTION);
   const [connectionChecked, setConnectionChecked] = useState(false);
-  const [launchView, setLaunchView] = useState<"login" | "workspace">(
-    "login",
-  );
+  const [launchView, setLaunchView] =
+    useState<"checking" | "login" | "workspace">("checking");
   const [usingDemo, setUsingDemo] = useState(true);
   const [selectedId, setSelectedId] = useState(
     initialDemoInbox.pullRequests[0]?.id ?? "",
@@ -243,12 +242,17 @@ export function PrWorkspace({
               setLaunchView("workspace");
             }
           }
+        } else {
+          setLaunchView("login");
         }
         if (!cancelled) setConnectionChecked(true);
       })
       .catch(() => {
         // Preview mode remains available when the local API is absent.
-        if (!cancelled) setConnectionChecked(true);
+        if (!cancelled) {
+          setConnectionChecked(true);
+          setLaunchView("login");
+        }
       });
     return () => {
       cancelled = true;
@@ -410,17 +414,27 @@ export function PrWorkspace({
   }
 
   async function disconnect() {
+    setError(null);
+    setToast(null);
+    setLaunchView("checking");
     try {
       await gateway().disconnect();
       const nextConnection = await gateway().connectionStatus();
+      if (nextConnection.connected) {
+        throw new Error("GitHub is still connected. Try disconnecting again.");
+      }
       setConnection(nextConnection);
-      setUsingDemo(true);
+      setUsingDemo(false);
       setInboxData(initialDemoInbox);
       setWarning(null);
       setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
-      setToast("GitHub disconnected; showing demo data");
+      setConnectionDialog(false);
+      setDeviceFlow(null);
+      setDevicePollState(null);
+      setLaunchView("login");
     } catch (nextError) {
       setError(messageFrom(nextError));
+      setLaunchView("workspace");
     }
   }
 
@@ -500,7 +514,7 @@ export function PrWorkspace({
     viewDefinitions.find((view) => view.id === activeView) ??
     viewDefinitions[0];
 
-  if (launchView === "login") {
+  if (launchView !== "workspace") {
     return (
       <main className="app-shell launch-shell">
         <header className="window-bar">
@@ -512,15 +526,19 @@ export function PrWorkspace({
           <div />
         </header>
 
-        <LaunchLogin
-          checking={!connectionChecked}
-          configured={connection.configured}
-          error={error}
-          onEnterPreview={enterPreview}
-          onSignIn={() => void startConnection()}
-        />
+        {launchView === "checking" ? (
+          <LaunchChecking />
+        ) : (
+          <LaunchLogin
+            checking={!connectionChecked}
+            configured={connection.configured}
+            error={error}
+            onEnterPreview={enterPreview}
+            onSignIn={() => void startConnection()}
+          />
+        )}
 
-        {connectionDialog && (
+        {launchView === "login" && connectionDialog && (
           <ConnectionDialog
             configured={connection.configured}
             deviceFlow={deviceFlow}
@@ -850,6 +868,21 @@ export function PrWorkspace({
         </div>
       )}
     </main>
+  );
+}
+
+function LaunchChecking() {
+  return (
+    <section className="launch-stage" aria-labelledby="launch-checking-title">
+      <div className="launch-glow" aria-hidden="true" />
+      <div className="launch-card launch-checking" role="status">
+        <div className="launch-brand" aria-hidden="true">
+          H
+        </div>
+        <LoaderCircle aria-hidden="true" className="spin" size={22} />
+        <h1 id="launch-checking-title">Restoring your session…</h1>
+      </div>
+    </section>
   );
 }
 
