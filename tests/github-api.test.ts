@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   GitHubApiError,
+  PR_FRAGMENT,
   getViewerWithToken,
+  loadInboxWithToken,
   loadPullDiffWithToken,
   refreshUserToken,
   submitReviewWithToken,
@@ -13,6 +16,13 @@ const NEW_HEAD = "b".repeat(40);
 const CURRENT_HEAD = "c".repeat(40);
 const BASE_SHA = "d".repeat(40);
 const NEW_BASE_SHA = "e".repeat(40);
+
+test("documents Contents access for commit-backed inbox fields", async () => {
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(PR_FRAGMENT, /commits\(last: 1\)/);
+  assert.match(PR_FRAGMENT, /latestOpinionatedReviews/);
+  assert.match(readme, /- Contents: read/);
+});
 
 test("authenticated API requests identify Hype to GitHub", async () => {
   const originalFetch = globalThis.fetch;
@@ -32,6 +42,207 @@ test("authenticated API requests identify Hype to GitHub", async () => {
     assert.equal(
       requestHeaders?.get("X-GitHub-Api-Version"),
       "2026-03-10",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("live inbox cards map every displayed PR field from GitHub", async () => {
+  const originalFetch = globalThis.fetch;
+  let graphqlBody: { query?: string } | null = null;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+
+    graphqlBody = JSON.parse(String(init?.body));
+    const pullRequest = {
+      additions: 58,
+      author: {
+        avatarUrl: "https://avatars.githubusercontent.com/u/2?v=4",
+        login: "octocat",
+        name: "Octo Cat",
+      },
+      baseRefName: "main",
+      changedFiles: 3,
+      comments: { totalCount: 7 },
+      commits: {
+        nodes: [
+          {
+            commit: {
+              oid: CURRENT_HEAD,
+              statusCheckRollup: { state: "SUCCESS" },
+            },
+          },
+        ],
+      },
+      createdAt: "2026-07-26T18:00:00.000Z",
+      deletions: 14,
+      headRefName: "real-card-data",
+      headRefOid: CURRENT_HEAD,
+      id: "PR_real",
+      isDraft: false,
+      labels: { nodes: [{ name: "a11y" }, { name: "design-system" }] },
+      latestOpinionatedReviews: { nodes: [] },
+      mergeable: "MERGEABLE",
+      number: 128,
+      repository: { nameWithOwner: "real/design-system" },
+      reviewDecision: "REVIEW_REQUIRED",
+      reviewRequests: {
+        nodes: [
+          {
+            requestedReviewer: {
+              __typename: "User",
+              login: "morgan",
+            },
+          },
+        ],
+      },
+      title: "Use real pull request data",
+      updatedAt: "2026-07-28T18:00:00.000Z",
+      url: "https://github.com/real/design-system/pull/128",
+    };
+    return Response.json({
+      data: {
+        assigned: { nodes: [] },
+        authored: { nodes: [] },
+        rateLimit: {
+          cost: 4,
+          remaining: 4996,
+          resetAt: "2026-07-28T19:00:00.000Z",
+        },
+        reviewRequested: { nodes: [pullRequest] },
+        reviewed: { nodes: [] },
+      },
+      errors: [
+        {
+          message: "Resource not accessible by integration",
+          path: [
+            "reviewRequested",
+            "nodes",
+            0,
+            "commits",
+            "nodes",
+            0,
+            "commit",
+            "statusCheckRollup",
+          ],
+        },
+      ],
+    });
+  };
+
+  try {
+    const result = await loadInboxWithToken("secret-token");
+    assert.match(graphqlBody?.query ?? "", /comments\s*\{\s*totalCount/);
+    assert.match(graphqlBody?.query ?? "", /labels\(first: 100\)/);
+    assert.deepEqual(result.pullRequests[0], {
+      additions: 58,
+      author: {
+        avatarUrl: "https://avatars.githubusercontent.com/u/2?v=4",
+        login: "octocat",
+        name: "Octo Cat",
+      },
+      baseRefName: "main",
+      changedFiles: 3,
+      checkState: "SUCCESS",
+      commentCount: 7,
+      createdAt: "2026-07-26T18:00:00.000Z",
+      deletions: 14,
+      headRefName: "real-card-data",
+      headSha: CURRENT_HEAD,
+      id: "PR_real",
+      isDraft: false,
+      labels: ["a11y", "design-system"],
+      lastMeaningfulActivityAt: "2026-07-28T18:00:00.000Z",
+      mergeState: "MERGEABLE",
+      mentionsViewer: false,
+      number: 128,
+      repository: "real/design-system",
+      reviewDecision: "REVIEW_REQUIRED",
+      reviewRequestedAt: null,
+      teamReviewRequested: false,
+      title: "Use real pull request data",
+      updatedAt: "2026-07-28T18:00:00.000Z",
+      url: "https://github.com/real/design-system/pull/128",
+      viewerLastReviewCommitSha: null,
+      viewerLastReviewAt: null,
+      viewerRelationship: "REVIEW_REQUESTED",
+      viewerReviewState: null,
+    });
+    assert.deepEqual(result.warnings, [
+      "Some pull request details are unavailable. GitHub denied: statusCheckRollup. Approve the GitHub App’s requested repository permissions to restore them.",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects an integration permission error when GitHub returns no inbox data", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({
+      data: null,
+      errors: [{ message: "Resource not accessible by integration" }],
+    });
+  };
+
+  try {
+    await assert.rejects(
+      loadInboxWithToken("secret-token"),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "github_403" &&
+        error.status === 403 &&
+        error.githubMessage === "Resource not accessible by integration" &&
+        error.message.includes("installation does not have access"),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not hide unexpected GraphQL errors behind a partial inbox", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({
+      data: {
+        assigned: { nodes: [] },
+        authored: { nodes: [] },
+        reviewRequested: { nodes: [] },
+        reviewed: { nodes: [] },
+      },
+      errors: [{ message: "GitHub could not resolve the inbox query." }],
+    });
+  };
+
+  try {
+    await assert.rejects(
+      loadInboxWithToken("secret-token"),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "graphql_error" &&
+        error.status === 502 &&
+        error.message === "GitHub could not resolve the inbox query.",
     );
   } finally {
     globalThis.fetch = originalFetch;

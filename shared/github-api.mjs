@@ -28,12 +28,20 @@ export const PR_FRAGMENT = `
         }
       }
     }
+    comments {
+      totalCount
+    }
     createdAt
     deletions
     headRefName
     headRefOid
     id
     isDraft
+    labels(first: 100) {
+      nodes {
+        name
+      }
+    }
     latestOpinionatedReviews(first: 20) {
       nodes {
         author {
@@ -166,14 +174,35 @@ export async function loadInboxWithToken(token, signal) {
     token,
   );
   const payload = await response.json();
-  if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+  const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+  const permissionDenied =
+    graphqlErrors.length > 0 &&
+    graphqlErrors.every(
+      (error) => error?.message === "Resource not accessible by integration",
+    );
+  const canUsePartialData =
+    permissionDenied && hasUsableInboxData(payload.data);
+  if (graphqlErrors.length > 0 && !canUsePartialData) {
+    const githubMessage =
+      graphqlErrors[0]?.message ??
+      "GitHub could not load the pull request inbox.";
     throw new GitHubApiError(
-      payload.errors[0]?.message ?? "GitHub could not load the pull request inbox.",
-      { code: "graphql_error", status: 502 },
+      permissionDenied
+        ? "The GitHub App installation does not have access to the requested pull request data."
+        : githubMessage,
+      {
+        code: permissionDenied ? "github_403" : "graphql_error",
+        githubMessage,
+        status: permissionDenied ? 403 : 502,
+      },
     );
   }
 
-  return mapInboxPayload(payload.data, viewer);
+  return mapInboxPayload(
+    payload.data,
+    viewer,
+    canUsePartialData ? [permissionWarning(graphqlErrors)] : [],
+  );
 }
 
 export async function loadPullDiffWithToken(
@@ -492,7 +521,7 @@ export function publicError(error) {
   };
 }
 
-function mapInboxPayload(data, viewer) {
+function mapInboxPayload(data, viewer, warnings = []) {
   const buckets = [
     ["authored", data.authored?.nodes ?? []],
     ["assigned", data.assigned?.nodes ?? []],
@@ -525,7 +554,29 @@ function mapInboxPayload(data, viewer) {
       : null,
     syncedAt: new Date().toISOString(),
     viewer,
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
+}
+
+function hasUsableInboxData(data) {
+  return ["authored", "assigned", "reviewRequested", "reviewed"].some(
+    (bucket) => Array.isArray(data?.[bucket]?.nodes),
+  );
+}
+
+function permissionWarning(errors) {
+  const fields = [
+    ...new Set(
+      errors
+        .map((error) =>
+          Array.isArray(error?.path) ? error.path.at(-1) : null,
+        )
+        .filter((field) => typeof field === "string"),
+    ),
+  ];
+  const detail =
+    fields.length > 0 ? ` GitHub denied: ${fields.join(", ")}.` : "";
+  return `Some pull request details are unavailable.${detail} Approve the GitHub App’s requested repository permissions to restore them.`;
 }
 
 function mapPullRequest(node, buckets, viewerLogin) {

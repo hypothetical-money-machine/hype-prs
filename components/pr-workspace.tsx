@@ -114,6 +114,7 @@ export function PrWorkspace({
   const [diffLayout, setDiffLayout] = useState<DiffLayout>("split");
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [connectionDialog, setConnectionDialog] = useState(false);
   const [deviceFlow, setDeviceFlow] = useState<DeviceFlowStart | null>(null);
@@ -175,6 +176,7 @@ export function PrWorkspace({
         ...initialDemoInbox,
         syncedAt: new Date().toISOString(),
       });
+      setWarning(null);
       setToast("Demo data refreshed");
       return;
     }
@@ -184,6 +186,7 @@ export function PrWorkspace({
     try {
       const next = await gateway().getInbox();
       setInboxData(next);
+      setWarning(next.warnings?.[0] ?? null);
       setSelectedId((current) =>
         next.pullRequests.some((pullRequest) => pullRequest.id === current)
           ? current
@@ -211,13 +214,27 @@ export function PrWorkspace({
         if (cancelled) return;
         setConnection(status);
         if (status.connected) {
+          setWarning(null);
+          setInboxData({
+            pullRequests: [],
+            rateLimit: null,
+            syncedAt: new Date().toISOString(),
+            viewer: status.viewer ?? {
+              avatarUrl: null,
+              login: "",
+              name: null,
+            },
+          });
+          setSelectedId("");
           setUsingDemo(false);
           setSyncing(true);
           try {
             const liveInbox = await gateway().getInbox();
             if (cancelled) return;
             setInboxData(liveInbox);
+            setWarning(liveInbox.warnings?.[0] ?? null);
             setSelectedId(liveInbox.pullRequests[0]?.id ?? "");
+            setError(null);
           } catch (nextError) {
             if (!cancelled) setError(messageFrom(nextError));
           } finally {
@@ -399,6 +416,7 @@ export function PrWorkspace({
       setConnection(nextConnection);
       setUsingDemo(true);
       setInboxData(initialDemoInbox);
+      setWarning(null);
       setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
       setToast("GitHub disconnected; showing demo data");
     } catch (nextError) {
@@ -410,6 +428,7 @@ export function PrWorkspace({
     setError(null);
     setUsingDemo(true);
     setInboxData(initialDemoInbox);
+    setWarning(null);
     setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
     setLaunchView("workspace");
   }
@@ -589,6 +608,9 @@ export function PrWorkspace({
           </div>
           <div className="account-card">
             <Avatar
+              avatarUrl={
+                connection.connected ? connection.viewer?.avatarUrl : null
+              }
               login={
                 connection.connected
                   ? (connection.viewer?.login ?? "github")
@@ -696,6 +718,15 @@ export function PrWorkspace({
               <WifiOff aria-hidden="true" size={15} />
               <span>{error}</span>
               <button onClick={() => setError(null)} type="button">
+                Dismiss
+              </button>
+            </div>
+          )}
+          {warning && (
+            <div className="inline-warning" role="status">
+              <TriangleAlert aria-hidden="true" size={15} />
+              <span>{warning}</span>
+              <button onClick={() => setWarning(null)} type="button">
                 Dismiss
               </button>
             </div>
@@ -943,7 +974,11 @@ function PullRequestRow({
       </div>
       <div className="pr-row-footer">
         <span className="author">
-          <Avatar login={pullRequest.author.login} small />
+          <Avatar
+            avatarUrl={pullRequest.author.avatarUrl}
+            login={pullRequest.author.login}
+            small
+          />
           {pullRequest.author.login}
         </span>
         <StatusSummary pullRequest={pullRequest} />
@@ -984,7 +1019,11 @@ function PullRequestHeader({
         <div>
           <h2>{pullRequest.title}</h2>
           <div className="detail-byline">
-            <Avatar login={pullRequest.author.login} small />
+            <Avatar
+              avatarUrl={pullRequest.author.avatarUrl}
+              login={pullRequest.author.login}
+              small
+            />
             <strong>{pullRequest.author.login}</strong>
             <span>
               opened {relativeTime(pullRequest.createdAt, now.getTime())}
@@ -1027,24 +1066,21 @@ function PullRequestHeader({
           <FileCode2 aria-hidden="true" size={13} />
           {pullRequest.changedFiles} files
         </span>
-        {usingDemo && (
-          <span className="meta-pill">
-            <MessageSquare aria-hidden="true" size={13} />
-            {pullRequest.commentCount}
-          </span>
-        )}
+        <span className="meta-pill">
+          <MessageSquare aria-hidden="true" size={13} />
+          {pullRequest.commentCount}
+        </span>
         <span className="meta-pill additions">
           +{pullRequest.additions}
         </span>
         <span className="meta-pill deletions">
           −{pullRequest.deletions}
         </span>
-        {usingDemo &&
-          pullRequest.labels.map((label) => (
-            <span className="label-pill" key={label}>
-              {label}
-            </span>
-          ))}
+        {pullRequest.labels.map((label) => (
+          <span className="label-pill" key={label}>
+            {label}
+          </span>
+        ))}
         {usingDemo && <span className="demo-pill">SYNTHETIC</span>}
       </div>
     </header>
@@ -1332,14 +1368,32 @@ function ViewButton({
   );
 }
 
-function Avatar({ login, small = false }: { login: string; small?: boolean }) {
+function Avatar({
+  avatarUrl,
+  login,
+  small = false,
+}: {
+  avatarUrl?: string | null;
+  login: string;
+  small?: boolean;
+}) {
   const initials = login
     .split(/[-_.]/)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
   return (
-    <span className="avatar" data-small={small} aria-hidden="true">
+    <span
+      className="avatar"
+      data-has-image={Boolean(avatarUrl)}
+      data-small={small}
+      aria-hidden="true"
+      style={
+        avatarUrl
+          ? { backgroundImage: `url(${JSON.stringify(avatarUrl)})` }
+          : undefined
+      }
+    >
       {initials || "?"}
     </span>
   );

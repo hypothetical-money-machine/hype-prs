@@ -52,6 +52,12 @@ Configure these repository permissions on the GitHub App:
 - Pull requests: read and write
 - Checks: read
 - Commit statuses: read
+- Contents: read
+
+The inbox reads commit objects for the current head revision, aggregate check
+state, and the commit attached to the viewer's latest review. GitHub gates those
+commit objects behind Contents permission even though the surrounding pull
+request metadata is covered by Pull requests permission.
 
 Install the App only on repositories the user is allowed to access. Normal
 organization approval, selected-repository access, SSO, and user permissions

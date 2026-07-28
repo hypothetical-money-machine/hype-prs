@@ -99,6 +99,7 @@ export interface InboxPayload {
   } | null;
   syncedAt: string;
   viewer: PullRequestActor;
+  warnings?: string[];
 }
 
 export interface ConnectionStatus {

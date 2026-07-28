@@ -273,7 +273,7 @@ current MVP complete:
 
 - Use a GitHub App; do not accept a personal access token in the product UI.
 - Request only the GitHub App permissions needed to read pull requests,
-  metadata, and checks/statuses and to submit reviews.
+  metadata, commit objects, and checks/statuses and to submit reviews.
 - Preserve GitHub's repository selection, installation, SSO, organization
   approval, and user permission decisions.
 - Treat access denial as a boundary, not a condition to work around.

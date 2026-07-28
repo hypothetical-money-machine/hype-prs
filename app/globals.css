@@ -536,6 +536,12 @@ textarea:focus-visible {
   width: 19px;
 }
 
+.avatar[data-has-image="true"] {
+  background-position: center;
+  background-size: cover;
+  color: transparent;
+}
+
 .icon-button {
   align-items: center;
   background: transparent;
@@ -722,6 +728,29 @@ textarea:focus-visible {
 }
 
 .inline-error button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 8.5px;
+  text-decoration: underline;
+}
+
+.inline-warning {
+  align-items: center;
+  background: rgba(255, 196, 87, 0.1);
+  border-bottom: 1px solid rgba(255, 196, 87, 0.2);
+  color: #ffd48a;
+  display: flex;
+  font-size: 9.5px;
+  gap: 7px;
+  padding: 8px 14px;
+}
+
+.inline-warning span {
+  flex: 1;
+}
+
+.inline-warning button {
   background: transparent;
   border: 0;
   color: inherit;
