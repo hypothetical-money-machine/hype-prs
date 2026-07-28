@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   GitHubApiError,
+  getViewerWithToken,
   loadPullDiffWithToken,
   refreshUserToken,
   submitReviewWithToken,
@@ -12,6 +13,60 @@ const NEW_HEAD = "b".repeat(40);
 const CURRENT_HEAD = "c".repeat(40);
 const BASE_SHA = "d".repeat(40);
 const NEW_BASE_SHA = "e".repeat(40);
+
+test("authenticated API requests identify Hype to GitHub", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestHeaders: Headers | null = null;
+  globalThis.fetch = async (_input, init) => {
+    requestHeaders = new Headers(init?.headers);
+    return Response.json({
+      avatar_url: null,
+      login: "morgan",
+      name: "Morgan",
+    });
+  };
+
+  try {
+    await getViewerWithToken("secret-token");
+    assert.equal(requestHeaders?.get("User-Agent"), "Hype-PRs/0.1.0");
+    assert.equal(
+      requestHeaders?.get("X-GitHub-Api-Version"),
+      "2026-03-10",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GitHub API errors retain safe upstream diagnostics", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        documentation_url:
+          "https://docs.github.com/rest/using-the-rest-api/getting-started-with-the-rest-api#user-agent",
+        message: "User agent required",
+      },
+      {
+        headers: { "x-github-request-id": "ABC1:2345:6789" },
+        status: 403,
+      },
+    );
+
+  try {
+    await assert.rejects(
+      getViewerWithToken("secret-token"),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "github_403" &&
+        error.status === 403 &&
+        error.githubMessage === "User agent required" &&
+        error.requestId === "ABC1:2345:6789",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("rejects unsafe repository coordinates before making a request", async () => {
   await assert.rejects(

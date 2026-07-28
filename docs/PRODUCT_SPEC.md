@@ -135,14 +135,22 @@ attention without increasing that compact badge.
 
 ## Core workflows
 
-### 1. Explore in demo mode
+### 1. Launch and sign in
+
+An unauthenticated launch opens on the GitHub sign-in flow rather than loading
+synthetic pull requests. A user with an existing valid session continues
+directly to their live workspace. The launch screen also offers an explicit
+**Explore preview mode** action that enters the full interface with synthetic
+data and no GitHub authorization.
+
+### 2. Explore in demo mode
 
 With no GitHub App configuration, the full shared UI loads synthetic pull
 requests and diffs. Views, ranking, search, keyboard navigation, file browsing,
 diff layout, and the formal review dialog remain usable without live access.
 Demo review submission changes demo state only.
 
-### 2. Connect GitHub
+### 3. Connect GitHub
 
 - The web app uses GitHub's authorization-code flow with state and PKCE. The
   server exchanges the code and stores the token set in an encrypted,
@@ -158,7 +166,7 @@ The connection UI states that Hype PRs is another GitHub client and that normal
 GitHub App installation, organization approval, SSO, and managed-device policy
 still apply.
 
-### 3. Triage the inbox
+### 4. Triage the inbox
 
 1. Open Hype PRs in the browser or from the macOS menu bar.
 2. Start in Needs attention and read the reason shown for each item.
@@ -168,7 +176,7 @@ still apply.
    and `Option+Arrow` to move between views.
 6. Refresh manually from the UI or Electron tray menu.
 
-### 4. Browse changed files and diffs
+### 5. Browse changed files and diffs
 
 Selecting a pull request loads its changed-file list and complete Git diff from
 GitHub. The detail surface provides:

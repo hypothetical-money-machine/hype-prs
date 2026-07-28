@@ -22,20 +22,18 @@ async function render(path = "/", accept = "text/html") {
   );
 }
 
-test("server-renders the action-first Hype workspace", async () => {
+test("server-renders login first with an explicit preview option", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Hype — the pull request pulse<\/title>/i);
-  assert.match(html, /Needs attention/);
-  assert.match(html, /Review requested/);
-  assert.match(html, /CI failing/);
-  assert.match(html, />Repository</);
-  assert.match(html, />Author</);
-  assert.match(html, /Changed files/);
-  assert.match(html, /Connect GitHub/);
+  assert.match(html, /Welcome to Hype/);
+  assert.match(html, /Continue with GitHub/);
+  assert.match(html, /Explore preview mode/);
+  assert.match(html, /No sign-in needed/);
+  assert.doesNotMatch(html, /Needs attention/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
 });
 

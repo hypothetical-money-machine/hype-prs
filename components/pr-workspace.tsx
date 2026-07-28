@@ -83,17 +83,29 @@ const INITIAL_CONNECTION: ConnectionStatus = {
   viewer: null,
 };
 
-export function PrWorkspace() {
+export function PrWorkspace({
+  initialDemoInbox = demoInbox,
+  initialNow = Date.parse(initialDemoInbox.syncedAt),
+}: {
+  initialDemoInbox?: InboxPayload;
+  initialNow?: number;
+} = {}) {
   const [activeView, setActiveView] = useState<ViewId>("needs-attention");
   const [sort, setSort] = useState<SortId>("attention");
   const [query, setQuery] = useState("");
-  const [inboxData, setInboxData] = useState<InboxPayload>(demoInbox);
+  const [inboxData, setInboxData] =
+    useState<InboxPayload>(initialDemoInbox);
   const [connection, setConnection] =
     useState<ConnectionStatus>(INITIAL_CONNECTION);
+  const [connectionChecked, setConnectionChecked] = useState(false);
+  const [launchView, setLaunchView] = useState<"login" | "workspace">(
+    "login",
+  );
   const [usingDemo, setUsingDemo] = useState(true);
   const [selectedId, setSelectedId] = useState(
-    demoInbox.pullRequests[0]?.id ?? "",
+    initialDemoInbox.pullRequests[0]?.id ?? "",
   );
+  const [clockNow, setClockNow] = useState(initialNow);
   const [liveDiffState, setLiveDiffState] = useState<{
     diff: PullRequestDiff;
     inboxSyncedAt: string;
@@ -136,12 +148,17 @@ export function PrWorkspace() {
       !displayedDiff.truncated &&
       Boolean(displayedDiff.baseSha) &&
       displayedDiff.headSha === selectedPullRequest?.headSha);
+  const viewNow = useMemo(() => new Date(clockNow), [clockNow]);
 
   const visiblePullRequests = useMemo(() => {
-    const viewed = filterForView(inboxData.pullRequests, activeView);
-    const searched = searchPullRequests(viewed, query);
-    return sortForView(searched, activeView, sort);
-  }, [activeView, inboxData.pullRequests, query, sort]);
+    const viewed = filterForView(
+      inboxData.pullRequests,
+      activeView,
+      viewNow,
+    );
+    const searched = searchPullRequests(viewed, query, viewNow);
+    return sortForView(searched, activeView, sort, viewNow);
+  }, [activeView, inboxData.pullRequests, query, sort, viewNow]);
 
   const selectView = useCallback((view: ViewId) => {
     setActiveView(view);
@@ -154,7 +171,10 @@ export function PrWorkspace() {
 
   const refreshInbox = useCallback(async () => {
     if (usingDemo || !connection.connected) {
-      setInboxData({ ...demoInbox, syncedAt: new Date().toISOString() });
+      setInboxData({
+        ...initialDemoInbox,
+        syncedAt: new Date().toISOString(),
+      });
       setToast("Demo data refreshed");
       return;
     }
@@ -174,7 +194,14 @@ export function PrWorkspace() {
     } finally {
       setSyncing(false);
     }
-  }, [connection.connected, usingDemo]);
+  }, [connection.connected, initialDemoInbox, usingDemo]);
+
+  useEffect(() => {
+    const tick = () => setClockNow(Date.now());
+    tick();
+    const interval = window.setInterval(tick, 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,12 +221,17 @@ export function PrWorkspace() {
           } catch (nextError) {
             if (!cancelled) setError(messageFrom(nextError));
           } finally {
-            if (!cancelled) setSyncing(false);
+            if (!cancelled) {
+              setSyncing(false);
+              setLaunchView("workspace");
+            }
           }
         }
+        if (!cancelled) setConnectionChecked(true);
       })
       .catch(() => {
-        // The fixture inbox remains fully usable when the local API is absent.
+        // Preview mode remains available when the local API is absent.
+        if (!cancelled) setConnectionChecked(true);
       });
     return () => {
       cancelled = true;
@@ -314,6 +346,7 @@ export function PrWorkspace() {
           const nextConnection = await gateway().connectionStatus();
           setConnection(nextConnection);
           setUsingDemo(false);
+          setLaunchView("workspace");
           setConnectionDialog(false);
           setDeviceFlow(null);
           setToast(`Connected as ${result.viewer.login}`);
@@ -337,6 +370,7 @@ export function PrWorkspace() {
   }, [deviceFlow, devicePollState]);
 
   async function startConnection() {
+    if (!connectionChecked) return;
     if (!connection.configured) {
       setConnectionDialog(true);
       return;
@@ -364,12 +398,20 @@ export function PrWorkspace() {
       const nextConnection = await gateway().connectionStatus();
       setConnection(nextConnection);
       setUsingDemo(true);
-      setInboxData(demoInbox);
-      setSelectedId(demoInbox.pullRequests[0]?.id ?? "");
+      setInboxData(initialDemoInbox);
+      setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
       setToast("GitHub disconnected; showing demo data");
     } catch (nextError) {
       setError(messageFrom(nextError));
     }
+  }
+
+  function enterPreview() {
+    setError(null);
+    setUsingDemo(true);
+    setInboxData(initialDemoInbox);
+    setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
+    setLaunchView("workspace");
   }
 
   async function openSelectedInGitHub() {
@@ -439,6 +481,45 @@ export function PrWorkspace() {
     viewDefinitions.find((view) => view.id === activeView) ??
     viewDefinitions[0];
 
+  if (launchView === "login") {
+    return (
+      <main className="app-shell launch-shell">
+        <header className="window-bar">
+          <div className="traffic-light-space" aria-hidden="true" />
+          <div className="window-title">
+            <span className="window-title-dot" />
+            <span>Hype PRs</span>
+          </div>
+          <div />
+        </header>
+
+        <LaunchLogin
+          checking={!connectionChecked}
+          configured={connection.configured}
+          error={error}
+          onEnterPreview={enterPreview}
+          onSignIn={() => void startConnection()}
+        />
+
+        {connectionDialog && (
+          <ConnectionDialog
+            configured={connection.configured}
+            deviceFlow={deviceFlow}
+            onClose={() => {
+              setConnectionDialog(false);
+              setDeviceFlow(null);
+            }}
+            onStart={() => void startConnection()}
+            polling={
+              devicePollState === "pending" ||
+              devicePollState === "slow_down"
+            }
+          />
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="window-bar">
@@ -468,7 +549,11 @@ export function PrWorkspace() {
               <ViewButton
                 key={view.id}
                 active={activeView === view.id}
-                count={countForView(inboxData.pullRequests, view.id)}
+                count={countForView(
+                  inboxData.pullRequests,
+                  view.id,
+                  viewNow,
+                )}
                 icon={viewIcon(view.id)}
                 label={view.shortLabel}
                 onClick={() => selectView(view.id)}
@@ -482,7 +567,11 @@ export function PrWorkspace() {
               <ViewButton
                 key={view.id}
                 active={activeView === view.id}
-                count={countForView(inboxData.pullRequests, view.id)}
+                count={countForView(
+                  inboxData.pullRequests,
+                  view.id,
+                  viewNow,
+                )}
                 icon={viewIcon(view.id)}
                 label={view.shortLabel}
                 onClick={() => selectView(view.id)}
@@ -597,7 +686,7 @@ export function PrWorkspace() {
               {visiblePullRequests.length === 1 ? "" : "s"}
             </span>
             <span>
-              Last synced {relativeTime(inboxData.syncedAt)}
+              Last synced {relativeTime(inboxData.syncedAt, clockNow)}
               {usingDemo ? " · demo" : ""}
             </span>
           </div>
@@ -637,6 +726,7 @@ export function PrWorkspace() {
                     )}
                     <PullRequestRow
                       active={selectedPullRequest?.id === pullRequest.id}
+                      now={viewNow}
                       onClick={() => setSelectedId(pullRequest.id)}
                       pullRequest={pullRequest}
                     />
@@ -661,6 +751,7 @@ export function PrWorkspace() {
           {selectedPullRequest ? (
             <>
               <PullRequestHeader
+                now={viewNow}
                 onOpenInGitHub={() => void openSelectedInGitHub()}
                 onReview={() => setReviewOpen(true)}
                 pullRequest={selectedPullRequest}
@@ -731,16 +822,103 @@ export function PrWorkspace() {
   );
 }
 
+function LaunchLogin({
+  checking,
+  configured,
+  error,
+  onEnterPreview,
+  onSignIn,
+}: {
+  checking: boolean;
+  configured: boolean;
+  error: string | null;
+  onEnterPreview(): void;
+  onSignIn(): void;
+}) {
+  return (
+    <section className="launch-stage" aria-labelledby="launch-title">
+      <div className="launch-glow" aria-hidden="true" />
+      <div className="launch-card">
+        <div className="launch-brand" aria-hidden="true">
+          H
+        </div>
+        <span className="eyebrow">Your pull request pulse</span>
+        <h1 id="launch-title">Welcome to Hype</h1>
+        <p>
+          Sign in with GitHub to see the pull requests that need your attention,
+          review changes, and keep work moving.
+        </p>
+
+        {error && (
+          <div className="launch-error" role="alert">
+            <WifiOff aria-hidden="true" size={15} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <button
+          aria-busy={checking}
+          className="primary-button launch-sign-in"
+          disabled={checking}
+          onClick={onSignIn}
+          type="button"
+        >
+          {checking ? (
+            <LoaderCircle aria-hidden="true" className="spin" size={16} />
+          ) : (
+            <LockKeyhole aria-hidden="true" size={16} />
+          )}
+          Continue with GitHub
+          {!checking && <ArrowUpRight aria-hidden="true" size={15} />}
+        </button>
+
+        {!checking && !configured && (
+          <p className="launch-configuration-note">
+            Live sign-in is not configured in this preview build.
+          </p>
+        )}
+
+        <div className="launch-divider">
+          <span>or</span>
+        </div>
+
+        <button
+          className="preview-button"
+          onClick={onEnterPreview}
+          type="button"
+        >
+          <Code2 aria-hidden="true" size={16} />
+          <span>
+            <strong>Explore preview mode</strong>
+            <small>Try Hype with synthetic pull requests. No sign-in needed.</small>
+          </span>
+          <ArrowUpRight aria-hidden="true" size={15} />
+        </button>
+
+        <div className="launch-policy">
+          <ShieldCheck aria-hidden="true" size={15} />
+          <span>
+            Organization approvals, SSO, and managed-device policies still
+            apply.
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PullRequestRow({
   active,
+  now,
   onClick,
   pullRequest,
 }: {
   active: boolean;
+  now: Date;
   onClick(): void;
   pullRequest: PullRequestSummary;
 }) {
-  const reason = dominantReason(pullRequest);
+  const reason = dominantReason(pullRequest, now);
   return (
     <button
       aria-selected={active}
@@ -759,7 +937,9 @@ function PullRequestRow({
       <div className="reason-line">
         {reasonIcon(reason.code)}
         <span>{reason.explanation}</span>
-        <time dateTime={reason.timestamp}>{relativeTime(reason.timestamp)}</time>
+        <time dateTime={reason.timestamp}>
+          {relativeTime(reason.timestamp, now.getTime())}
+        </time>
       </div>
       <div className="pr-row-footer">
         <span className="author">
@@ -777,12 +957,14 @@ function PullRequestRow({
 }
 
 function PullRequestHeader({
+  now,
   onOpenInGitHub,
   onReview,
   pullRequest,
   reviewReady,
   usingDemo,
 }: {
+  now: Date;
   onOpenInGitHub(): void;
   onReview(): void;
   pullRequest: PullRequestSummary;
@@ -804,7 +986,9 @@ function PullRequestHeader({
           <div className="detail-byline">
             <Avatar login={pullRequest.author.login} small />
             <strong>{pullRequest.author.login}</strong>
-            <span>opened {relativeTime(pullRequest.createdAt)}</span>
+            <span>
+              opened {relativeTime(pullRequest.createdAt, now.getTime())}
+            </span>
             <span>·</span>
             <GitBranch aria-hidden="true" size={13} />
             <code>{pullRequest.headRefName}</code>
@@ -1278,10 +1462,10 @@ function reviewEventDescription(event: ReviewEvent) {
   return "Feedback without a decision";
 }
 
-function relativeTime(value: string): string {
+function relativeTime(value: string, now: number): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return "just now";
-  const difference = timestamp - Date.now();
+  const difference = timestamp - now;
   const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
   const absolute = Math.abs(difference);
   if (absolute < 60 * 60 * 1000) {

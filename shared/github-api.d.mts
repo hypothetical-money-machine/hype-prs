@@ -15,7 +15,18 @@ export interface TokenSet {
 
 export class GitHubApiError extends Error {
   code: string;
+  githubMessage: string | null;
+  requestId: string | null;
   status: number;
+  constructor(
+    message: string,
+    options?: {
+      code?: string;
+      githubMessage?: string | null;
+      requestId?: string | null;
+      status?: number;
+    },
+  );
 }
 
 export const INBOX_QUERY: string;

@@ -159,13 +159,19 @@ export function callbackUrl(request: Request): string {
   const configured = process.env.GITHUB_CALLBACK_URL?.trim();
   if (configured) {
     const url = new URL(configured);
+    const isDevelopmentLoopback =
+      process.env.NODE_ENV !== "production" &&
+      url.protocol === "http:" &&
+      ["127.0.0.1", "::1", "localhost"].includes(url.hostname);
     if (
-      url.protocol !== "https:" ||
+      (url.protocol !== "https:" && !isDevelopmentLoopback) ||
       url.username ||
       url.password ||
       url.hash
     ) {
-      throw new Error("GITHUB_CALLBACK_URL must be an exact HTTPS URL.");
+      throw new Error(
+        "GITHUB_CALLBACK_URL must be HTTPS, except for local development loopback URLs.",
+      );
     }
     return url.toString();
   }

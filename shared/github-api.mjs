@@ -2,6 +2,7 @@ const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_GRAPHQL_URL = `${GITHUB_API_URL}/graphql`;
 const GITHUB_LOGIN_URL = "https://github.com/login";
 const GITHUB_API_VERSION = "2026-03-10";
+const GITHUB_USER_AGENT = "Hype-PRs/0.1.0";
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
 const MAX_FILE_PAGES = 30;
 
@@ -113,10 +114,20 @@ export const INBOX_QUERY = `
 `;
 
 export class GitHubApiError extends Error {
-  constructor(message, { code = "github_error", status = 500 } = {}) {
+  constructor(
+    message,
+    {
+      code = "github_error",
+      githubMessage = null,
+      requestId = null,
+      status = 500,
+    } = {},
+  ) {
     super(message);
     this.name = "GitHubApiError";
     this.code = code;
+    this.githubMessage = githubMessage;
+    this.requestId = requestId;
     this.status = status;
   }
 }
@@ -674,6 +685,7 @@ async function githubFetch(pathOrUrl, init, token) {
     headers.set("Accept", "application/vnd.github+json");
   }
   headers.set("Authorization", `Bearer ${token}`);
+  headers.set("User-Agent", GITHUB_USER_AGENT);
   headers.set("X-GitHub-Api-Version", GITHUB_API_VERSION);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -682,13 +694,17 @@ async function githubFetch(pathOrUrl, init, token) {
   const response = await fetch(url, { ...init, headers });
   if (response.ok) return response;
 
-  let message = `GitHub request failed (${response.status}).`;
+  let githubMessage = null;
   if (
     response.headers.get("content-type")?.includes("application/json")
   ) {
     const payload = await response.json().catch(() => null);
-    if (payload?.message) message = payload.message;
+    if (typeof payload?.message === "string") {
+      githubMessage = payload.message;
+    }
   }
+  let message =
+    githubMessage ?? `GitHub request failed (${response.status}).`;
   if (response.status === 401) {
     message = "The GitHub session expired or was revoked. Connect again.";
   } else if (response.status === 403) {
@@ -703,6 +719,8 @@ async function githubFetch(pathOrUrl, init, token) {
 
   throw new GitHubApiError(message, {
     code: `github_${response.status}`,
+    githubMessage,
+    requestId: response.headers.get("x-github-request-id"),
     status: response.status,
   });
 }
