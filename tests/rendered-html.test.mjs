@@ -22,19 +22,25 @@ async function render(path = "/", accept = "text/html") {
   );
 }
 
-test("server-renders login first with an explicit preview option", async () => {
+test("server-renders a neutral session check before auth state is known", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Hype — the pull request pulse<\/title>/i);
-  assert.match(html, /Welcome to Hype/);
-  assert.match(html, /Continue with GitHub/);
-  assert.match(html, /Explore preview mode/);
-  assert.match(html, /No sign-in needed/);
+  assert.match(html, /Restoring your session/);
+  assert.doesNotMatch(html, /Welcome to Hype/);
+  assert.doesNotMatch(html, /Continue with GitHub/);
+  assert.doesNotMatch(html, /Explore preview mode/);
   assert.doesNotMatch(html, /Needs attention/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
+});
+
+test("GitHub connection status is never cached", async () => {
+  const response = await render("/api/github/status", "application/json");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /\bno-store\b/);
 });
 
 test("web distribution exposes Pierre's full license and notices", async () => {

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { callbackUrl } from "../lib/server/github-session";
+import {
+  callbackUrl,
+  sessionCookieMaxAge,
+} from "../lib/server/github-session";
 
 const CALLBACK_ENV_KEYS = ["GITHUB_CALLBACK_URL", "NODE_ENV"] as const;
 
@@ -103,5 +106,36 @@ test("allows an explicit HTTPS callback in production", async () => {
         "https://hype.example/api/github/auth/callback",
       );
     },
+  );
+});
+
+test("keeps a non-expiring GitHub session across browser restarts", () => {
+  assert.equal(
+    sessionCookieMaxAge({
+      accessToken: "access",
+      expiresAt: null,
+      refreshToken: null,
+      refreshTokenExpiresAt: null,
+      tokenType: "bearer",
+    }),
+    30 * 24 * 60 * 60,
+  );
+});
+
+test("keeps the session through the refresh-token lifetime", () => {
+  const now = Date.parse("2026-07-28T12:00:00.000Z");
+  assert.equal(
+    sessionCookieMaxAge(
+      {
+        accessToken: "access",
+        expiresAt: "2026-07-28T20:00:00.000Z",
+        refreshToken: "refresh",
+        refreshTokenExpiresAt: "2026-09-11T12:00:00.000Z",
+        tokenType: "bearer",
+      },
+      now,
+    ),
+    // Deliberately not 30 days, so this cannot pass on the fallback value.
+    45 * 24 * 60 * 60,
   );
 });

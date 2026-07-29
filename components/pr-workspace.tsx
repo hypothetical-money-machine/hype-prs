@@ -74,6 +74,15 @@ const EMPTY_DIFF: PullRequestDiff = {
   truncated: false,
 };
 
+const EMPTY_INBOX: InboxPayload = {
+  pullRequests: [],
+  rateLimit: null,
+  syncedAt: "",
+  viewer: { avatarUrl: null, login: "", name: null },
+};
+
+const CONNECTION_TIMEOUT_MS = 20 * 1000;
+
 const INITIAL_CONNECTION: ConnectionStatus = {
   authKind: null,
   configured: false,
@@ -98,9 +107,8 @@ export function PrWorkspace({
   const [connection, setConnection] =
     useState<ConnectionStatus>(INITIAL_CONNECTION);
   const [connectionChecked, setConnectionChecked] = useState(false);
-  const [launchView, setLaunchView] = useState<"login" | "workspace">(
-    "login",
-  );
+  const [launchView, setLaunchView] =
+    useState<"checking" | "login" | "workspace">("checking");
   const [usingDemo, setUsingDemo] = useState(true);
   const [selectedId, setSelectedId] = useState(
     initialDemoInbox.pullRequests[0]?.id ?? "",
@@ -208,11 +216,11 @@ export function PrWorkspace({
 
   useEffect(() => {
     let cancelled = false;
-    gateway()
-      .connectionStatus()
+    withTimeout(gateway().connectionStatus())
       .then(async (status) => {
         if (cancelled) return;
         setConnection(status);
+        setConnectionChecked(true);
         if (status.connected) {
           setWarning(null);
           setInboxData({
@@ -228,6 +236,7 @@ export function PrWorkspace({
           setSelectedId("");
           setUsingDemo(false);
           setSyncing(true);
+          setLaunchView("workspace");
           try {
             const liveInbox = await gateway().getInbox();
             if (cancelled) return;
@@ -240,15 +249,18 @@ export function PrWorkspace({
           } finally {
             if (!cancelled) {
               setSyncing(false);
-              setLaunchView("workspace");
             }
           }
+        } else {
+          setLaunchView("login");
         }
-        if (!cancelled) setConnectionChecked(true);
       })
       .catch(() => {
-        // Preview mode remains available when the local API is absent.
-        if (!cancelled) setConnectionChecked(true);
+        // Preview mode remains available when the local API is absent or slow.
+        if (!cancelled) {
+          setConnectionChecked(true);
+          setLaunchView("login");
+        }
       });
     return () => {
       cancelled = true;
@@ -410,17 +422,34 @@ export function PrWorkspace({
   }
 
   async function disconnect() {
+    setError(null);
+    setToast(null);
+    setLaunchView("checking");
     try {
-      await gateway().disconnect();
-      const nextConnection = await gateway().connectionStatus();
+      await withTimeout(gateway().disconnect());
+      const nextConnection = await withTimeout(gateway().connectionStatus());
+      if (nextConnection.connected) {
+        throw new Error("GitHub is still connected. Try disconnecting again.");
+      }
       setConnection(nextConnection);
-      setUsingDemo(true);
-      setInboxData(initialDemoInbox);
+      setUsingDemo(false);
+      // Demo pull requests must not load here: the workspace would treat them
+      // as live and request their diffs against a session that is now gone.
+      setInboxData(EMPTY_INBOX);
       setWarning(null);
-      setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
-      setToast("GitHub disconnected; showing demo data");
+      setSelectedId("");
+      setLiveDiffState({
+        diff: EMPTY_DIFF,
+        inboxSyncedAt: "",
+        pullRequestId: "",
+      });
+      setConnectionDialog(false);
+      setDeviceFlow(null);
+      setDevicePollState(null);
+      setLaunchView("login");
     } catch (nextError) {
       setError(messageFrom(nextError));
+      setLaunchView("workspace");
     }
   }
 
@@ -500,7 +529,7 @@ export function PrWorkspace({
     viewDefinitions.find((view) => view.id === activeView) ??
     viewDefinitions[0];
 
-  if (launchView === "login") {
+  if (launchView !== "workspace") {
     return (
       <main className="app-shell launch-shell">
         <header className="window-bar">
@@ -512,15 +541,19 @@ export function PrWorkspace({
           <div />
         </header>
 
-        <LaunchLogin
-          checking={!connectionChecked}
-          configured={connection.configured}
-          error={error}
-          onEnterPreview={enterPreview}
-          onSignIn={() => void startConnection()}
-        />
+        {launchView === "checking" ? (
+          <LaunchChecking />
+        ) : (
+          <LaunchLogin
+            checking={!connectionChecked}
+            configured={connection.configured}
+            error={error}
+            onEnterPreview={enterPreview}
+            onSignIn={() => void startConnection()}
+          />
+        )}
 
-        {connectionDialog && (
+        {launchView === "login" && connectionDialog && (
           <ConnectionDialog
             configured={connection.configured}
             deviceFlow={deviceFlow}
@@ -850,6 +883,21 @@ export function PrWorkspace({
         </div>
       )}
     </main>
+  );
+}
+
+function LaunchChecking() {
+  return (
+    <section className="launch-stage" aria-labelledby="launch-checking-title">
+      <div className="launch-glow" aria-hidden="true" />
+      <div className="launch-card launch-checking" role="status">
+        <div className="launch-brand" aria-hidden="true">
+          H
+        </div>
+        <LoaderCircle aria-hidden="true" className="spin" size={22} />
+        <h1 id="launch-checking-title">Restoring your session…</h1>
+      </div>
+    </section>
   );
 }
 
@@ -1538,4 +1586,19 @@ function messageFrom(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Something went wrong. Try again.";
+}
+
+// A stalled request never settles on its own, so bound the calls that gate the
+// launch screen. Without this the app can sit on the session check forever.
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = CONNECTION_TIMEOUT_MS,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error("The GitHub connection check timed out.")),
+      timeoutMs,
+    );
+    promise.then(resolve, reject).finally(() => window.clearTimeout(timeout));
+  });
 }

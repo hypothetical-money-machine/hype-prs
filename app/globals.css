@@ -227,6 +227,25 @@ textarea:focus-visible {
   margin: 13px 0 22px;
 }
 
+.launch-checking {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 300px;
+  justify-content: center;
+  text-align: center;
+}
+
+.launch-checking h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.launch-checking > svg {
+  color: var(--accent);
+}
+
 .launch-sign-in {
   justify-content: center;
   min-height: 42px;

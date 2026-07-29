@@ -160,7 +160,8 @@ Demo review submission changes demo state only.
   using macOS Keychain-backed Electron `safeStorage`.
 - Both flows validate the connected viewer before loading live data.
 - Disconnect deletes the active web cookie or Electron credential file and
-  returns the interface to demo mode.
+  returns the interface to the unauthenticated landing page. Demo mode remains
+  available only through the landing page's explicit preview action.
 
 The connection UI states that Hype PRs is another GitHub client and that normal
 GitHub App installation, organization approval, SSO, and managed-device policy

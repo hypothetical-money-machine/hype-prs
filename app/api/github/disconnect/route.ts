@@ -9,5 +9,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   if (!assertSameOrigin(request)) return invalidOrigin();
   await clearGitHubSession();
-  return new Response(null, { status: 204 });
+  return new Response(null, {
+    headers: {
+      "Cache-Control": "private, no-store",
+    },
+    status: 204,
+  });
 }

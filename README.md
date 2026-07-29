@@ -250,9 +250,9 @@ permissions.
 - External links are limited to HTTPS `github.com` URLs.
 - Surfaced Electron errors redact bearer tokens.
 
-Disconnect removes the local session and returns to demo mode. Do not add
-tokens, secrets, private diffs, or repository data to logs or committed
-fixtures.
+Disconnect removes the local session and returns to the unauthenticated landing
+page. Demo mode starts only through the explicit preview action. Do not add
+tokens, secrets, private diffs, or repository data to logs or committed fixtures.
 
 ## Current MVP limits
 
