@@ -212,6 +212,7 @@ export function PrWorkspace({
       .then(async (status) => {
         if (cancelled) return;
         setConnection(status);
+        setConnectionChecked(true);
         if (status.connected) {
           setWarning(null);
           setInboxData({
@@ -227,6 +228,7 @@ export function PrWorkspace({
           setSelectedId("");
           setUsingDemo(false);
           setSyncing(true);
+          setLaunchView("workspace");
           try {
             const liveInbox = await gateway().getInbox();
             if (cancelled) return;
@@ -239,13 +241,11 @@ export function PrWorkspace({
           } finally {
             if (!cancelled) {
               setSyncing(false);
-              setLaunchView("workspace");
             }
           }
         } else {
           setLaunchView("login");
         }
-        if (!cancelled) setConnectionChecked(true);
       })
       .catch(() => {
         // Preview mode remains available when the local API is absent.

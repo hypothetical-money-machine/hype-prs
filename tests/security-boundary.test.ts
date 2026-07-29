@@ -38,6 +38,15 @@ test("Electron keeps credentials and native authority outside the renderer", asy
   assert.match(rendererHtml, /default-src 'self'/);
   assert.match(workspace, /liveDiffState\.inboxSyncedAt === inboxData\.syncedAt/);
   assert.match(workspace, /baseCommitId: displayedDiff\.baseSha/);
+  const connectedBootstrap = workspace.slice(
+    workspace.indexOf("if (status.connected)"),
+    workspace.indexOf("if (!selectedPullRequest || usingDemo)"),
+  );
+  assert.ok(
+    connectedBootstrap.indexOf('setLaunchView("workspace")') <
+      connectedBootstrap.indexOf("await gateway().getInbox()"),
+    "connected sessions must leave the restoring view before loading the inbox",
+  );
   const badRefreshBranch = webSession.slice(
     webSession.indexOf('"bad_refresh_token"'),
     webSession.indexOf("throw error;"),
