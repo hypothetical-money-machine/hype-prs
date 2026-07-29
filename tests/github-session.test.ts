@@ -130,11 +130,12 @@ test("keeps the session through the refresh-token lifetime", () => {
         accessToken: "access",
         expiresAt: "2026-07-28T20:00:00.000Z",
         refreshToken: "refresh",
-        refreshTokenExpiresAt: "2026-08-27T12:00:00.000Z",
+        refreshTokenExpiresAt: "2026-09-11T12:00:00.000Z",
         tokenType: "bearer",
       },
       now,
     ),
-    30 * 24 * 60 * 60,
+    // Deliberately not 30 days, so this cannot pass on the fallback value.
+    45 * 24 * 60 * 60,
   );
 });
