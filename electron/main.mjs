@@ -24,6 +24,7 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  assertGitHubWebUrl,
   getViewerWithToken,
   loadInboxWithToken,
   loadPullDiffWithToken,
@@ -31,7 +32,11 @@ import {
   refreshUserToken,
   startDeviceFlow,
   submitReviewWithToken,
+  tokenSetNeedsRefresh,
+  validateRepositoryCoordinates,
+  validateReviewInput,
 } from "../shared/github-api.mjs";
+import { needsAttentionNow } from "../shared/pr-attention.mjs";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -61,6 +66,7 @@ let quitting = false;
 let githubAppClientId = "";
 let pendingDeviceFlow = null;
 let cachedInbox = null;
+let cachedSession = null;
 let refreshPromise = null;
 let authGeneration = 0;
 let authAbortController = new AbortController();
@@ -376,7 +382,10 @@ function registerIpc() {
   }));
 
   ipcMain.handle("hype:get-pull-diff", withTrustedSender(async (_event, input) => {
-    validatePullCoordinates(input);
+    if (!input || typeof input !== "object") {
+      throw new Error("Invalid pull request.");
+    }
+    validateRepositoryCoordinates(input);
     const operation = currentAuthOperation();
     const token = await validAccessToken(operation);
     const diff = await loadPullDiffWithToken(token, input, operation.signal);
@@ -399,10 +408,7 @@ function registerIpc() {
   }));
 
   ipcMain.handle("hype:open-external", withTrustedSender(async (_event, value) => {
-    const url = new URL(String(value));
-    if (url.protocol !== "https:" || url.hostname !== "github.com") {
-      throw new Error("Only HTTPS GitHub links can be opened.");
-    }
+    const url = assertGitHubWebUrl(value);
     await shell.openExternal(url.toString());
   }));
 }
@@ -432,10 +438,7 @@ async function validAccessToken(operation = currentAuthOperation()) {
   if (!sessionData?.tokenSet?.accessToken) {
     throw new Error("Connect an approved GitHub App to continue.");
   }
-  const expiresAt = sessionData.tokenSet.expiresAt
-    ? new Date(sessionData.tokenSet.expiresAt).getTime()
-    : Number.POSITIVE_INFINITY;
-  if (expiresAt - Date.now() > 2 * 60 * 1000) {
+  if (!tokenSetNeedsRefresh(sessionData.tokenSet)) {
     assertCurrentAuthOperation(operation);
     return sessionData.tokenSet.accessToken;
   }
@@ -470,6 +473,9 @@ async function validAccessToken(operation = currentAuthOperation()) {
 }
 
 async function readEncryptedSession(expectedGeneration = authGeneration) {
+  if (cachedSession && expectedGeneration === authGeneration) {
+    return cachedSession;
+  }
   if (!safeStorage.isEncryptionAvailable()) return null;
   try {
     const encoded = await readFile(credentialPath(), "utf8");
@@ -491,6 +497,7 @@ async function readEncryptedSession(expectedGeneration = authGeneration) {
       await writeEncryptedSession(sessionData, expectedGeneration);
     }
     assertAuthGeneration(expectedGeneration);
+    cachedSession = sessionData;
     return sessionData;
   } catch (error) {
     if (error?.code === "AUTH_CANCELLED") throw error;
@@ -530,6 +537,7 @@ async function writeEncryptedSession(session, expectedGeneration = authGeneratio
       });
       throw new Error("GitHub connection was cancelled.");
     }
+    cachedSession = session;
   } finally {
     await unlink(temporary).catch((error) => {
       if (error?.code !== "ENOENT") throw error;
@@ -544,6 +552,7 @@ async function disconnectGitHub() {
   refreshPromise = null;
   pendingDeviceFlow = null;
   cachedInbox = null;
+  cachedSession = null;
   try {
     await unlink(credentialPath());
   } catch (error) {
@@ -606,25 +615,10 @@ function updateTrayBadge() {
 }
 
 function countActionable(pullRequests) {
-  return pullRequests.filter((pullRequest) => {
-    if (pullRequest.isDraft) return false;
-    if (
-      pullRequest.viewerRelationship === "REVIEW_REQUESTED" ||
-      pullRequest.viewerRelationship === "TEAM_REVIEW_REQUESTED" ||
-      pullRequest.mentionsViewer
-    ) {
-      return true;
-    }
-    if (pullRequest.viewerRelationship !== "AUTHOR") return false;
-    return (
-      pullRequest.reviewDecision === "CHANGES_REQUESTED" ||
-      pullRequest.checkState === "FAILURE" ||
-      pullRequest.mergeState === "CONFLICTING" ||
-      (pullRequest.reviewDecision === "APPROVED" &&
-        pullRequest.checkState === "SUCCESS" &&
-        pullRequest.mergeState === "MERGEABLE")
-    );
-  }).length;
+  const now = new Date();
+  return pullRequests.filter((pullRequest) =>
+    needsAttentionNow(pullRequest, now),
+  ).length;
 }
 
 async function readPublicClientId() {
@@ -665,43 +659,6 @@ function isAllowedDevelopmentUrl(value) {
     );
   } catch {
     return false;
-  }
-}
-
-function validatePullCoordinates(input) {
-  if (!input || typeof input !== "object") {
-    throw new Error("Invalid pull request.");
-  }
-  const validSegment = /^[A-Za-z0-9_.-]+$/;
-  if (
-    !validSegment.test(input.owner) ||
-    !validSegment.test(input.repository) ||
-    !Number.isInteger(input.number) ||
-    input.number < 1
-  ) {
-    throw new Error("Invalid pull request.");
-  }
-}
-
-function validateReviewInput(input) {
-  validatePullCoordinates(input);
-  if (!["APPROVE", "COMMENT", "REQUEST_CHANGES"].includes(input.event)) {
-    throw new Error("Unsupported review action.");
-  }
-  if (typeof input.body !== "string" || input.body.length > 65_536) {
-    throw new Error("Invalid review summary.");
-  }
-  if (
-    typeof input.commitId !== "string" ||
-    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(input.commitId)
-  ) {
-    throw new Error("Invalid pull request revision.");
-  }
-  if (
-    typeof input.baseCommitId !== "string" ||
-    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(input.baseCommitId)
-  ) {
-    throw new Error("Invalid base revision.");
   }
 }
 

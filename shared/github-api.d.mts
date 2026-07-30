@@ -111,3 +111,20 @@ export function publicError(error: unknown): {
   message: string;
   status: number;
 };
+
+export const TOKEN_REFRESH_EARLY_MS: number;
+
+export function tokenSetNeedsRefresh(
+  tokenSet: TokenSet,
+  now?: number,
+): boolean;
+
+export function assertGitHubWebUrl(value: unknown): URL;
+
+export function validateRepositoryCoordinates(input: {
+  number: number;
+  owner: string;
+  repository: string;
+}): void;
+
+export function validateReviewInput(input: unknown): void;

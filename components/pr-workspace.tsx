@@ -98,7 +98,7 @@ export function PrWorkspace({
 }: {
   initialDemoInbox?: InboxPayload;
   initialNow?: number;
-} = {}) {
+}) {
   const [activeView, setActiveView] = useState<ViewId>("needs-attention");
   const [sort, setSort] = useState<SortId>("attention");
   const [query, setQuery] = useState("");

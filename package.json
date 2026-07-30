@@ -63,6 +63,7 @@
       "electron/preload.cjs",
       "package.json",
       "shared/github-api.mjs",
+      "shared/pr-attention.mjs",
       "!node_modules/**/*"
     ],
     "extraResources": [

@@ -26,9 +26,11 @@ test("documents Contents access for commit-backed inbox fields", async () => {
 
 test("authenticated API requests identify Hype to GitHub", async () => {
   const originalFetch = globalThis.fetch;
-  let requestHeaders: Headers | null = null;
+  // Captured inside the fetch stub, so it lives on an object: TypeScript
+  // cannot narrow a `let` that is only assigned from a closure.
+  const captured: { requestHeaders: Headers | null } = { requestHeaders: null };
   globalThis.fetch = async (_input, init) => {
-    requestHeaders = new Headers(init?.headers);
+    captured.requestHeaders = new Headers(init?.headers);
     return Response.json({
       avatar_url: null,
       login: "morgan",
@@ -38,9 +40,9 @@ test("authenticated API requests identify Hype to GitHub", async () => {
 
   try {
     await getViewerWithToken("secret-token");
-    assert.equal(requestHeaders?.get("User-Agent"), "Hype-PRs/0.1.0");
+    assert.equal(captured.requestHeaders?.get("User-Agent"), "Hype-PRs/0.1.0");
     assert.equal(
-      requestHeaders?.get("X-GitHub-Api-Version"),
+      captured.requestHeaders?.get("X-GitHub-Api-Version"),
       "2026-03-10",
     );
   } finally {
@@ -50,7 +52,11 @@ test("authenticated API requests identify Hype to GitHub", async () => {
 
 test("live inbox cards map every displayed PR field from GitHub", async () => {
   const originalFetch = globalThis.fetch;
-  let graphqlBody: { query?: string } | null = null;
+  // Captured inside the fetch stub, so it lives on an object: TypeScript
+  // cannot narrow a `let` that is only assigned from a closure.
+  const captured: { graphqlBody: { query?: string } | null } = {
+    graphqlBody: null,
+  };
   globalThis.fetch = async (input, init) => {
     if (String(input).endsWith("/user")) {
       return Response.json({
@@ -60,7 +66,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       });
     }
 
-    graphqlBody = JSON.parse(String(init?.body));
+    captured.graphqlBody = JSON.parse(String(init?.body));
     const pullRequest = {
       additions: 58,
       author: {
@@ -139,8 +145,8 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
 
   try {
     const result = await loadInboxWithToken("secret-token");
-    assert.match(graphqlBody?.query ?? "", /comments\s*\{\s*totalCount/);
-    assert.match(graphqlBody?.query ?? "", /labels\(first: 100\)/);
+    assert.match(captured.graphqlBody?.query ?? "", /comments\s*\{\s*totalCount/);
+    assert.match(captured.graphqlBody?.query ?? "", /labels\(first: 100\)/);
     assert.deepEqual(result.pullRequests[0], {
       additions: 58,
       author: {

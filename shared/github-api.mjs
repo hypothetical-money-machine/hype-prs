@@ -155,13 +155,15 @@ export async function getViewerWithToken(token, signal) {
 }
 
 export async function loadInboxWithToken(token, signal) {
-  const viewer = await getViewerWithToken(token, signal);
   const variables = {
-    authoredQuery: `is:pull-request is:open author:${viewer.login} archived:false sort:updated-desc`,
-    assignedQuery: `is:pull-request is:open assignee:${viewer.login} archived:false sort:updated-desc`,
+    authoredQuery:
+      "is:pull-request is:open author:@me archived:false sort:updated-desc",
+    assignedQuery:
+      "is:pull-request is:open assignee:@me archived:false sort:updated-desc",
     reviewQuery:
       "is:pull-request is:open user-review-requested:@me archived:false sort:updated-desc",
-    reviewedQuery: `is:pull-request is:open reviewed-by:${viewer.login} archived:false sort:updated-desc`,
+    reviewedQuery:
+      "is:pull-request is:open reviewed-by:@me archived:false sort:updated-desc",
   };
 
   const response = await githubFetch(
@@ -198,6 +200,18 @@ export async function loadInboxWithToken(token, signal) {
     );
   }
 
+  const graphqlViewer = payload.data?.viewer;
+  // GraphQL omits `viewer` whenever the installation lacks the permission for
+  // it, and every relationship (and the tray badge) depends on a real login,
+  // so fall back to the REST identity call instead of an empty string.
+  const viewer =
+    typeof graphqlViewer?.login === "string" && graphqlViewer.login
+      ? {
+          avatarUrl: graphqlViewer.avatarUrl ?? null,
+          login: graphqlViewer.login,
+          name: graphqlViewer.name ?? null,
+        }
+      : await getViewerWithToken(token, signal);
   return mapInboxPayload(
     payload.data,
     viewer,
@@ -269,58 +283,9 @@ export async function loadPullDiffWithToken(
 }
 
 export async function submitReviewWithToken(token, input, signal) {
-  if (!input || typeof input !== "object") {
-    throw new GitHubApiError("Invalid review.", {
-      code: "invalid_review",
-      status: 400,
-    });
-  }
-  const {
-    owner,
-    repository,
-    number,
-    event,
-    body,
-    commitId,
-    baseCommitId,
-  } = input;
-  validateRepositoryCoordinates({ owner, repository, number });
-  if (!["APPROVE", "COMMENT", "REQUEST_CHANGES"].includes(event)) {
-    throw new GitHubApiError("Unsupported review action.", {
-      code: "invalid_review",
-      status: 400,
-    });
-  }
-  if (typeof body !== "string" || body.length > 65_536) {
-    throw new GitHubApiError("Invalid review summary.", {
-      code: "invalid_review",
-      status: 400,
-    });
-  }
-  if (event !== "APPROVE" && !body.trim()) {
-    throw new GitHubApiError(
-      "A review summary is required for comments and change requests.",
-      { code: "invalid_review", status: 400 },
-    );
-  }
-  if (
-    typeof commitId !== "string" ||
-    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(commitId)
-  ) {
-    throw new GitHubApiError(
-      "A full pull request revision is required before submitting a review.",
-      { code: "invalid_review", status: 400 },
-    );
-  }
-  if (
-    typeof baseCommitId !== "string" ||
-    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseCommitId)
-  ) {
-    throw new GitHubApiError(
-      "A full base revision is required before submitting a review.",
-      { code: "invalid_review", status: 400 },
-    );
-  }
+  validateReviewInput(input);
+  const { owner, repository, number, event, body, commitId, baseCommitId } =
+    input;
 
   const currentResponse = await githubFetch(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
@@ -366,16 +331,11 @@ export async function startDeviceFlow(clientId, signal) {
       status: 503,
     });
   }
-  const response = await fetch(`${GITHUB_LOGIN_URL}/device/code`, {
-    body: new URLSearchParams({ client_id: clientId }),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    method: "POST",
+  const { payload, response } = await postLoginForm(
+    "/device/code",
+    { client_id: clientId },
     signal,
-  });
-  const payload = await readJsonResponse(response);
+  );
   if (!response.ok || payload.error) {
     throw githubLoginError(payload, response.status);
   }
@@ -393,20 +353,15 @@ export async function pollDeviceFlow(
   deviceCode,
   signal,
 ) {
-  const response = await fetch(`${GITHUB_LOGIN_URL}/oauth/access_token`, {
-    body: new URLSearchParams({
+  const { payload, response } = await postLoginForm(
+    "/oauth/access_token",
+    {
       client_id: clientId,
       device_code: deviceCode,
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    }),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
     },
-    method: "POST",
     signal,
-  });
-  const payload = await readJsonResponse(response);
+  );
 
   if (payload.error === "authorization_pending") {
     return { status: "pending" };
@@ -451,22 +406,17 @@ export async function exchangeAuthorizationCode(
   },
   signal,
 ) {
-  const response = await fetch(`${GITHUB_LOGIN_URL}/oauth/access_token`, {
-    body: new URLSearchParams({
+  const { payload, response } = await postLoginForm(
+    "/oauth/access_token",
+    {
       client_id: clientId,
       client_secret: clientSecret,
       code,
       code_verifier: codeVerifier,
       redirect_uri: redirectUri,
-    }),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
     },
-    method: "POST",
     signal,
-  });
-  const payload = await readJsonResponse(response);
+  );
   if (!response.ok || payload.error || !payload.access_token) {
     throw githubLoginError(payload, response.status);
   }
@@ -483,20 +433,35 @@ export async function refreshUserToken(
     refresh_token: refreshToken,
   };
   if (clientSecret) body.client_secret = clientSecret;
-  const response = await fetch(`${GITHUB_LOGIN_URL}/oauth/access_token`, {
-    body: new URLSearchParams(body),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    method: "POST",
+  const { payload, response } = await postLoginForm(
+    "/oauth/access_token",
+    body,
     signal,
-  });
-  const payload = await readJsonResponse(response);
+  );
   if (!response.ok || payload.error || !payload.access_token) {
     throw githubLoginError(payload, response.status);
   }
   return normalizeTokenSet(payload);
+}
+
+export const TOKEN_REFRESH_EARLY_MS = 2 * 60 * 1000;
+
+export function tokenSetNeedsRefresh(tokenSet, now = Date.now()) {
+  const expiresAt = tokenSet.expiresAt
+    ? new Date(tokenSet.expiresAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  return expiresAt - now <= TOKEN_REFRESH_EARLY_MS;
+}
+
+export function assertGitHubWebUrl(value) {
+  const url = new URL(String(value));
+  if (url.protocol !== "https:" || url.hostname !== "github.com") {
+    throw new GitHubApiError("Only HTTPS GitHub links can be opened.", {
+      code: "invalid_url",
+      status: 400,
+    });
+  }
+  return url;
 }
 
 export function publicError(error) {
@@ -776,6 +741,19 @@ async function githubFetch(pathOrUrl, init, token) {
   });
 }
 
+async function postLoginForm(path, params, signal) {
+  const response = await fetch(`${GITHUB_LOGIN_URL}${path}`, {
+    body: new URLSearchParams(params),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    method: "POST",
+    signal,
+  });
+  return { payload: await readJsonResponse(response), response };
+}
+
 async function readJsonResponse(response) {
   try {
     return await response.json();
@@ -826,7 +804,7 @@ function normalizeMergeState(state) {
   return "UNKNOWN";
 }
 
-function validateRepositoryCoordinates({ owner, repository, number }) {
+export function validateRepositoryCoordinates({ owner, repository, number }) {
   const validSegment = /^[A-Za-z0-9_.-]+$/;
   if (
     !validSegment.test(owner) ||
@@ -838,5 +816,53 @@ function validateRepositoryCoordinates({ owner, repository, number }) {
       code: "invalid_pull_request",
       status: 400,
     });
+  }
+}
+
+const FULL_COMMIT_SHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
+export function validateReviewInput(input) {
+  if (!input || typeof input !== "object") {
+    throw new GitHubApiError("Invalid review.", {
+      code: "invalid_review",
+      status: 400,
+    });
+  }
+  validateRepositoryCoordinates(input);
+  if (!["APPROVE", "COMMENT", "REQUEST_CHANGES"].includes(input.event)) {
+    throw new GitHubApiError("Unsupported review action.", {
+      code: "invalid_review",
+      status: 400,
+    });
+  }
+  if (typeof input.body !== "string" || input.body.length > 65_536) {
+    throw new GitHubApiError("Invalid review summary.", {
+      code: "invalid_review",
+      status: 400,
+    });
+  }
+  if (input.event !== "APPROVE" && !input.body.trim()) {
+    throw new GitHubApiError(
+      "A review summary is required for comments and change requests.",
+      { code: "invalid_review", status: 400 },
+    );
+  }
+  if (
+    typeof input.commitId !== "string" ||
+    !FULL_COMMIT_SHA.test(input.commitId)
+  ) {
+    throw new GitHubApiError(
+      "A full pull request revision is required before submitting a review.",
+      { code: "invalid_review", status: 400 },
+    );
+  }
+  if (
+    typeof input.baseCommitId !== "string" ||
+    !FULL_COMMIT_SHA.test(input.baseCommitId)
+  ) {
+    throw new GitHubApiError(
+      "A full base revision is required before submitting a review.",
+      { code: "invalid_review", status: 400 },
+    );
   }
 }

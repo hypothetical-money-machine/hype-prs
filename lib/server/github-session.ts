@@ -2,13 +2,13 @@ import { cookies } from "next/headers";
 import {
   GitHubApiError,
   refreshUserToken,
+  tokenSetNeedsRefresh,
   type TokenSet,
 } from "../../shared/github-api.mjs";
 import type { PullRequestActor } from "../types";
 
 const AUTH_COOKIE = "hype_github_session";
 const OAUTH_COOKIE = "hype_github_oauth";
-const REFRESH_EARLY_MS = 2 * 60 * 1000;
 const FALLBACK_SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 export interface GitHubSession {
@@ -31,10 +31,7 @@ export function getGitHubConfig() {
     clientId,
     clientSecret,
     configured: Boolean(
-      clientId &&
-        clientSecret &&
-        sessionSecret &&
-        new TextEncoder().encode(sessionSecret).byteLength >= 32,
+      clientId && clientSecret && hasStrongSecret(sessionSecret),
     ),
     sessionSecret,
   };
@@ -53,10 +50,7 @@ export async function readGitHubSession(): Promise<GitHubSession | null> {
     return null;
   }
 
-  const expiresAt = session.tokenSet.expiresAt
-    ? new Date(session.tokenSet.expiresAt).getTime()
-    : Number.POSITIVE_INFINITY;
-  if (expiresAt - Date.now() > REFRESH_EARLY_MS) return session;
+  if (!tokenSetNeedsRefresh(session.tokenSet)) return session;
   if (!session.tokenSet.refreshToken) return null;
 
   try {
@@ -85,19 +79,12 @@ export async function readGitHubSession(): Promise<GitHubSession | null> {
 export async function writeGitHubSession(
   session: GitHubSession,
 ): Promise<void> {
-  const { sessionSecret } = getGitHubConfig();
-  if (new TextEncoder().encode(sessionSecret).byteLength < 32) {
-    throw new Error("Session encryption is not configured.");
-  }
-
+  const sessionSecret = requireStrongSecret();
   const cookieStore = await cookies();
   const maxAge = sessionCookieMaxAge(session.tokenSet);
   cookieStore.set(AUTH_COOKIE, await seal(session, sessionSecret), {
-    httpOnly: true,
+    ...cookieOptions("/"),
     maxAge,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
   });
 }
 
@@ -115,29 +102,19 @@ export function sessionCookieMaxAge(
 export async function clearGitHubSession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(AUTH_COOKIE, "", {
+    ...cookieOptions("/"),
     expires: new Date(0),
-    httpOnly: true,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
   });
 }
 
 export async function writeOAuthTransaction(
   transaction: OAuthTransaction,
 ): Promise<void> {
-  const { sessionSecret } = getGitHubConfig();
-  if (new TextEncoder().encode(sessionSecret).byteLength < 32) {
-    throw new Error("Session encryption is not configured.");
-  }
-
+  const sessionSecret = requireStrongSecret();
   const cookieStore = await cookies();
   cookieStore.set(OAUTH_COOKIE, await seal(transaction, sessionSecret), {
-    httpOnly: true,
+    ...cookieOptions("/api/github/auth"),
     maxAge: 10 * 60,
-    path: "/api/github/auth",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
   });
 }
 
@@ -209,6 +186,32 @@ export async function sha256UrlSafe(value: string): Promise<string> {
     new TextEncoder().encode(value),
   );
   return toBase64Url(new Uint8Array(digest));
+}
+
+function hasStrongSecret(secret: string): boolean {
+  return new TextEncoder().encode(secret).byteLength >= 32;
+}
+
+function requireStrongSecret(): string {
+  const { sessionSecret } = getGitHubConfig();
+  if (!hasStrongSecret(sessionSecret)) {
+    throw new Error("Session encryption is not configured.");
+  }
+  return sessionSecret;
+}
+
+function cookieOptions(path: string): {
+  httpOnly: boolean;
+  path: string;
+  sameSite: "lax";
+  secure: boolean;
+} {
+  return {
+    httpOnly: true,
+    path,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  };
 }
 
 async function seal(value: unknown, secret: string): Promise<string> {

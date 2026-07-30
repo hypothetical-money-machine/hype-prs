@@ -7,18 +7,22 @@ import {
 
 const CALLBACK_ENV_KEYS = ["GITHUB_CALLBACK_URL", "NODE_ENV"] as const;
 
+// Next declares `process.env.NODE_ENV` as readonly for application code; these
+// tests deliberately swap it out and restore it around each scenario.
+const mutableEnv = process.env as Record<string, string | undefined>;
+
 async function withCallbackEnvironment(
   values: Partial<Record<(typeof CALLBACK_ENV_KEYS)[number], string>>,
   run: () => void | Promise<void>,
 ) {
   const original = Object.fromEntries(
-    CALLBACK_ENV_KEYS.map((key) => [key, process.env[key]]),
+    CALLBACK_ENV_KEYS.map((key) => [key, mutableEnv[key]]),
   );
 
   for (const key of CALLBACK_ENV_KEYS) {
     const value = values[key];
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+    if (value === undefined) delete mutableEnv[key];
+    else mutableEnv[key] = value;
   }
 
   try {
@@ -26,8 +30,8 @@ async function withCallbackEnvironment(
   } finally {
     for (const key of CALLBACK_ENV_KEYS) {
       const value = original[key];
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) delete mutableEnv[key];
+      else mutableEnv[key] = value;
     }
   }
 }
