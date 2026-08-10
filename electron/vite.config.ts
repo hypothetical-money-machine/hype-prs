@@ -15,6 +15,7 @@ export default defineConfig({
     sourcemap: false,
   },
   plugins: [react()],
+  publicDir: fileURLToPath(new URL("../public", import.meta.url)),
   resolve: {
     alias: {
       "@": projectRoot,

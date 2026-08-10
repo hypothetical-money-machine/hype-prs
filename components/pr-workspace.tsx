@@ -45,6 +45,7 @@ import {
   useState,
 } from "react";
 import { DiffWorkspace, type DiffLayout } from "./diff-workspace";
+import { ThemeToggle, useThemePreference } from "./theme-toggle";
 import { demoDiffs, demoInbox } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
 import {
@@ -67,6 +68,7 @@ import type {
   PullRequestSummary,
   ReviewEvent,
 } from "@/lib/types";
+import type { ThemePreference } from "@/lib/theme";
 
 const EMPTY_DIFF: PullRequestDiff = {
   baseSha: "",
@@ -132,6 +134,7 @@ export function PrWorkspace({
   const [devicePollState, setDevicePollState] =
     useState<DeviceFlowPoll["status"] | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [themePreference, setThemePreference] = useThemePreference();
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -563,14 +566,10 @@ export function PrWorkspace({
   if (launchView !== "workspace") {
     return (
       <main className="app-shell launch-shell">
-        <header className="window-bar">
-          <div className="traffic-light-space" aria-hidden="true" />
-          <div className="window-title">
-            <span className="window-title-dot" />
-            <span>Hype PRs</span>
-          </div>
-          <div />
-        </header>
+        <WindowBar
+          onThemeChange={setThemePreference}
+          themePreference={themePreference}
+        />
 
         {launchView === "checking" ? (
           <LaunchChecking />
@@ -605,44 +604,16 @@ export function PrWorkspace({
 
   return (
     <main className="app-shell">
-      <header className="window-bar">
-        <div className="traffic-light-space" aria-hidden="true" />
-        <div className="window-title">
-          <span className="window-title-dot" />
-          <span>Hype PRs</span>
-        </div>
-        <div className="window-actions">
-          <div className="window-shortcut">⌘K search</div>
-          <button
-            aria-controls={
-              selectedPullRequest
-                ? "workspace-navigation pull-request-queue changed-files"
-                : "workspace-navigation pull-request-queue"
-            }
-            aria-expanded={!leftColumnsCollapsed}
-            aria-label={
-              leftColumnsCollapsed
-                ? "Expand left columns"
-                : "Collapse left columns"
-            }
-            className="left-columns-toggle"
-            onClick={() => setLeftColumnsCollapsed((collapsed) => !collapsed)}
-            title={
-              leftColumnsCollapsed
-                ? "Show navigation, pull requests, and changed files"
-                : "Hide navigation, pull requests, and changed files"
-            }
-            type="button"
-          >
-            {leftColumnsCollapsed ? (
-              <PanelLeftOpen aria-hidden="true" size={15} />
-            ) : (
-              <PanelLeftClose aria-hidden="true" size={15} />
-            )}
-            <span>{leftColumnsCollapsed ? "Show panels" : "Hide panels"}</span>
-          </button>
-        </div>
-      </header>
+      <WindowBar
+        leftColumnsCollapsed={leftColumnsCollapsed}
+        onThemeChange={setThemePreference}
+        onToggleLeftColumns={() =>
+          setLeftColumnsCollapsed((collapsed) => !collapsed)
+        }
+        showChangedFilesControl={Boolean(selectedPullRequest)}
+        showSearchShortcut
+        themePreference={themePreference}
+      />
 
       <div
         className="app-grid"
@@ -923,6 +894,7 @@ export function PrWorkspace({
                 loading={diffLoading}
                 onLayoutChange={setDiffLayout}
                 onOpenInGitHub={() => void openSelectedInGitHub()}
+                themePreference={themePreference ?? "system"}
               />
             </>
           ) : (
@@ -963,6 +935,71 @@ export function PrWorkspace({
         </div>
       )}
     </main>
+  );
+}
+
+function WindowBar({
+  leftColumnsCollapsed = false,
+  onThemeChange,
+  onToggleLeftColumns,
+  showChangedFilesControl = false,
+  showSearchShortcut = false,
+  themePreference,
+}: {
+  leftColumnsCollapsed?: boolean;
+  onThemeChange(preference: ThemePreference): void;
+  onToggleLeftColumns?(): void;
+  showChangedFilesControl?: boolean;
+  showSearchShortcut?: boolean;
+  themePreference: ThemePreference | null;
+}) {
+  return (
+    <header className="window-bar">
+      <div className="traffic-light-space" aria-hidden="true" />
+      <div className="window-title">
+        <span className="window-title-dot" />
+        <span>Hype PRs</span>
+      </div>
+      <div className="window-actions">
+        {showSearchShortcut && (
+          <span className="window-shortcut">⌘K search</span>
+        )}
+        {onToggleLeftColumns && (
+          <button
+            aria-controls={
+              showChangedFilesControl
+                ? "workspace-navigation pull-request-queue changed-files"
+                : "workspace-navigation pull-request-queue"
+            }
+            aria-expanded={!leftColumnsCollapsed}
+            aria-label={
+              leftColumnsCollapsed
+                ? "Expand left columns"
+                : "Collapse left columns"
+            }
+            className="left-columns-toggle"
+            onClick={onToggleLeftColumns}
+            title={
+              leftColumnsCollapsed
+                ? "Show navigation, pull requests, and changed files"
+                : "Hide navigation, pull requests, and changed files"
+            }
+            type="button"
+          >
+            {leftColumnsCollapsed ? (
+              <PanelLeftOpen aria-hidden="true" size={15} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={15} />
+            )}
+            <span>{leftColumnsCollapsed ? "Show panels" : "Hide panels"}</span>
+          </button>
+        )}
+        <ThemeToggle
+          onChange={onThemeChange}
+          preference={themePreference}
+        />
+      </div>
+    </header>
   );
 }
 

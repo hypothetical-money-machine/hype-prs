@@ -28,6 +28,8 @@ test("the initial workspace render is deterministic across elapsed time", () => 
 
     assert.equal(hydrationHtml, serverHtml);
     assert.match(serverHtml, /Restoring your session/);
+    assert.match(serverHtml, /<legend[^>]*>Appearance<\/legend>/);
+    assert.doesNotMatch(serverHtml, /\bchecked=""/);
     assert.doesNotMatch(serverHtml, /Welcome to Hype/);
     assert.doesNotMatch(serverHtml, /Explore preview mode/);
     assert.doesNotMatch(serverHtml, /Last synced/);
