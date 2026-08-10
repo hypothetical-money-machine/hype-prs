@@ -43,6 +43,7 @@ import {
   useState,
 } from "react";
 import { DiffWorkspace, type DiffLayout } from "./diff-workspace";
+import { ThemeToggle, useThemePreference } from "./theme-toggle";
 import { demoDiffs, demoInbox } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
 import {
@@ -65,6 +66,7 @@ import type {
   PullRequestSummary,
   ReviewEvent,
 } from "@/lib/types";
+import type { ThemePreference } from "@/lib/theme";
 
 const EMPTY_DIFF: PullRequestDiff = {
   baseSha: "",
@@ -129,6 +131,7 @@ export function PrWorkspace({
   const [devicePollState, setDevicePollState] =
     useState<DeviceFlowPoll["status"] | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [themePreference, setThemePreference] = useThemePreference();
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -554,14 +557,10 @@ export function PrWorkspace({
   if (launchView !== "workspace") {
     return (
       <main className="app-shell launch-shell">
-        <header className="window-bar">
-          <div className="traffic-light-space" aria-hidden="true" />
-          <div className="window-title">
-            <span className="window-title-dot" />
-            <span>Hype PRs</span>
-          </div>
-          <div />
-        </header>
+        <WindowBar
+          onThemeChange={setThemePreference}
+          themePreference={themePreference}
+        />
 
         {launchView === "checking" ? (
           <LaunchChecking />
@@ -596,14 +595,11 @@ export function PrWorkspace({
 
   return (
     <main className="app-shell">
-      <header className="window-bar">
-        <div className="traffic-light-space" aria-hidden="true" />
-        <div className="window-title">
-          <span className="window-title-dot" />
-          <span>Hype PRs</span>
-        </div>
-        <div className="window-shortcut">⌘K search</div>
-      </header>
+      <WindowBar
+        onThemeChange={setThemePreference}
+        showSearchShortcut
+        themePreference={themePreference}
+      />
 
       <div className="app-grid">
         <aside className="sidebar">
@@ -871,6 +867,7 @@ export function PrWorkspace({
                 loading={diffLoading}
                 onLayoutChange={setDiffLayout}
                 onOpenInGitHub={() => void openSelectedInGitHub()}
+                themePreference={themePreference ?? "system"}
               />
             </>
           ) : (
@@ -911,6 +908,35 @@ export function PrWorkspace({
         </div>
       )}
     </main>
+  );
+}
+
+function WindowBar({
+  onThemeChange,
+  showSearchShortcut = false,
+  themePreference,
+}: {
+  onThemeChange(preference: ThemePreference): void;
+  showSearchShortcut?: boolean;
+  themePreference: ThemePreference | null;
+}) {
+  return (
+    <header className="window-bar">
+      <div className="traffic-light-space" aria-hidden="true" />
+      <div className="window-title">
+        <span className="window-title-dot" />
+        <span>Hype PRs</span>
+      </div>
+      <div className="window-actions">
+        {showSearchShortcut && (
+          <span className="window-shortcut">⌘K search</span>
+        )}
+        <ThemeToggle
+          onChange={onThemeChange}
+          preference={themePreference}
+        />
+      </div>
+    </header>
   );
 }
 

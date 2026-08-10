@@ -4,6 +4,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   net,
   Notification,
   protocol,
@@ -95,7 +96,7 @@ app.on("window-all-closed", (event) => {
 
 function createPanel() {
   panel = new BrowserWindow({
-    backgroundColor: "#0a0c0c",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0c0c" : "#eef1eb",
     height: 760,
     minHeight: 650,
     minWidth: 980,

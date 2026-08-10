@@ -29,6 +29,7 @@ import {
   type FileTreeNode,
 } from "@/lib/file-tree";
 import type { ChangedFile, PullRequestDiff } from "@/lib/types";
+import type { ThemePreference } from "@/lib/theme";
 
 export type DiffLayout = "split" | "unified";
 
@@ -38,6 +39,7 @@ interface DiffWorkspaceProps {
   loading: boolean;
   onLayoutChange(layout: DiffLayout): void;
   onOpenInGitHub(): void;
+  themePreference: ThemePreference;
 }
 
 interface ParsedDiff {
@@ -52,6 +54,7 @@ export function DiffWorkspace({
   loading,
   onLayoutChange,
   onOpenInGitHub,
+  themePreference,
 }: DiffWorkspaceProps) {
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
   const viewerPaneRef = useRef<HTMLElement>(null);
@@ -239,7 +242,7 @@ export function DiffWorkspace({
                   dark: "github-dark-default",
                   light: "github-light-default",
                 },
-                themeType: "dark",
+                themeType: themePreference,
               }}
               style={
                 {
