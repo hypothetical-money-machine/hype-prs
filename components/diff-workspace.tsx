@@ -16,7 +16,13 @@ import {
   CodeView,
   type CodeViewHandle,
 } from "@pierre/diffs/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   buildFileTree,
   filterFileTree,
@@ -48,9 +54,11 @@ export function DiffWorkspace({
   onOpenInGitHub,
 }: DiffWorkspaceProps) {
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
+  const viewerPaneRef = useRef<HTMLElement>(null);
   const viewerSurfaceRef = useRef<HTMLDivElement>(null);
   const [fileQuery, setFileQuery] = useState("");
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
+  const [splitViewAvailable, setSplitViewAvailable] = useState(true);
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(
     new Set(),
   );
@@ -64,6 +72,7 @@ export function DiffWorkspace({
     : null;
   const selectedFileUnavailable =
     selectedFile !== null && !parsed.itemIdByName.has(selectedFile.filename);
+  const renderedLayout = splitViewAvailable ? layout : "unified";
 
   function scrollToFile(filename: string) {
     setSelectedFilename(filename);
@@ -84,6 +93,22 @@ export function DiffWorkspace({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [parsed.itemIdByName, selectedFileUnavailable, selectedFilename]);
+
+  useEffect(() => {
+    const viewerPane = viewerPaneRef.current;
+    if (!viewerPane) return;
+
+    const updateAvailability = (width: number) => {
+      setSplitViewAvailable(width >= 1000);
+    };
+    updateAvailability(viewerPane.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateAvailability(entry.contentRect.width);
+    });
+    observer.observe(viewerPane);
+    return () => observer.disconnect();
+  }, []);
 
   function toggleDirectory(id: string) {
     setCollapsedDirectories((current) => {
@@ -139,18 +164,28 @@ export function DiffWorkspace({
         </div>
       </aside>
 
-      <section className="diff-viewer" aria-label="Pull request diff">
+      <section
+        className="diff-viewer"
+        aria-label="Pull request diff"
+        ref={viewerPaneRef}
+      >
         <div className="diff-toolbar">
           <div className="segmented-control" aria-label="Diff layout">
             <button
-              aria-pressed={layout === "split"}
+              aria-pressed={renderedLayout === "split"}
+              disabled={!splitViewAvailable}
               onClick={() => onLayoutChange("split")}
+              title={
+                splitViewAvailable
+                  ? "Show the diff side by side"
+                  : "Split view is available when the diff pane is wider"
+              }
               type="button"
             >
               Split
             </button>
             <button
-              aria-pressed={layout === "unified"}
+              aria-pressed={renderedLayout === "unified"}
               onClick={() => onLayoutChange("unified")}
               type="button"
             >
@@ -192,7 +227,7 @@ export function DiffWorkspace({
               items={parsed.items}
               options={{
                 diffIndicators: "bars",
-                diffStyle: layout,
+                diffStyle: renderedLayout,
                 layout: {
                   gap: 1,
                   paddingBottom: 24,
@@ -206,7 +241,14 @@ export function DiffWorkspace({
                 },
                 themeType: "dark",
               }}
-              style={{ height: "100%", overflow: "auto" }}
+              style={
+                {
+                  "--diffs-font-size": "14px",
+                  "--diffs-line-height": "22px",
+                  height: "100%",
+                  overflow: "auto",
+                } as CSSProperties
+              }
             />
           )}
         </div>

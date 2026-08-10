@@ -129,6 +129,7 @@ export function PrWorkspace({
   const [devicePollState, setDevicePollState] =
     useState<DeviceFlowPoll["status"] | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const selectedPullRequest =
@@ -316,6 +317,20 @@ export function PrWorkspace({
         searchRef.current?.focus();
         return;
       }
+
+      if (event.key === "Escape") {
+        if (reviewOpen) {
+          event.preventDefault();
+          setReviewOpen(false);
+          return;
+        }
+        if (connectionDialog) {
+          event.preventDefault();
+          setConnectionDialog(false);
+          setDeviceFlow(null);
+          return;
+        }
+      }
       if (editing || reviewOpen || connectionDialog) return;
 
       if (event.key === "j" || event.key === "k") {
@@ -354,6 +369,13 @@ export function PrWorkspace({
     selectedId,
     visiblePullRequests,
   ]);
+
+  useEffect(() => {
+    const selectedRow = listRef.current?.querySelector<HTMLElement>(
+      '.pr-row[aria-selected="true"]',
+    );
+    selectedRow?.scrollIntoView({ block: "nearest" });
+  }, [activeView, query, selectedId, sort]);
 
   useEffect(() => {
     if (!toast) return;
@@ -639,6 +661,22 @@ export function PrWorkspace({
               policies still apply.
             </p>
           </div>
+          {!connection.connected && (
+            <button
+              aria-label="Connect an approved GitHub App for your live queue"
+              className="connect-banner"
+              onClick={() => void startConnection()}
+              title="Connect GitHub"
+              type="button"
+            >
+              <span className="live-dot" />
+              <span>
+                <strong>Connect GitHub</strong>
+                Demo mode · Use an approved GitHub App for your live queue
+              </span>
+              <ArrowUpRight aria-hidden="true" size={16} />
+            </button>
+          )}
           <div className="account-card">
             <Avatar
               avatarUrl={
@@ -765,7 +803,12 @@ export function PrWorkspace({
             </div>
           )}
 
-          <div className="pr-list" role="listbox" aria-label={currentView.label}>
+          <div
+            className="pr-list"
+            ref={listRef}
+            role="listbox"
+            aria-label={currentView.label}
+          >
             {visiblePullRequests.length > 0 ? (
               visiblePullRequests.map((pullRequest, index) => {
                 const group = groupLabel(pullRequest, activeView);
@@ -838,21 +881,6 @@ export function PrWorkspace({
           )}
         </section>
       </div>
-
-      {!connection.connected && (
-        <button
-          className="connect-banner"
-          onClick={() => void startConnection()}
-          type="button"
-        >
-          <span className="live-dot" />
-          <span>
-            <strong>Demo mode</strong>
-            Connect an approved GitHub App for your live queue
-          </span>
-          <ArrowUpRight aria-hidden="true" size={16} />
-        </button>
-      )}
 
       {connectionDialog && (
         <ConnectionDialog
@@ -1403,10 +1431,12 @@ function ViewButton({
 }) {
   return (
     <button
+      aria-label={`${label}, ${count}`}
       aria-current={active ? "page" : undefined}
       className="view-button"
       data-active={active}
       onClick={onClick}
+      title={`${label} (${count})`}
       type="button"
     >
       {icon}
