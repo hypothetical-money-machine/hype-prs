@@ -275,24 +275,38 @@ textarea:focus-visible {
   }
 }
 
-.left-columns-toggle {
+.panel-visibility-toggle {
   align-items: center;
-  background: var(--wash-soft);
+  background: var(--panel-bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  box-shadow: 2px 2px 8px color-mix(in srgb, var(--text) 7%, transparent);
   color: var(--muted);
-  display: inline-flex;
-  font-size: 10.5px;
-  font-weight: 620;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px;
+  display: flex;
+  height: 42px;
+  justify-content: center;
+  left: 0;
+  padding: 0;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  width: 29px;
+  z-index: 5;
 }
 
-.left-columns-toggle:hover {
-  background: var(--wash-strong);
+.panel-visibility-toggle:hover {
+  background: var(--hover);
   border-color: var(--border-strong);
   color: var(--text-soft);
+}
+
+.panel-visibility-toggle:focus-visible {
+  outline-offset: -3px;
 }
 
 .app-grid {
@@ -1190,6 +1204,7 @@ textarea:focus-visible {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .detail-header {

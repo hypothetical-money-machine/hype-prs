@@ -7,7 +7,7 @@ import { PrWorkspace } from "../components/pr-workspace";
 import { demoInbox } from "../lib/demo-data";
 import type { GitHubBridge } from "../lib/types";
 
-test("left columns collapse without losing context and search restores them", async () => {
+test("workspace panels collapse from the viewer boundary and restore context", async () => {
   const dom = installDom();
   let cleanupDom: (() => void) | undefined;
 
@@ -40,8 +40,10 @@ test("left columns collapse without losing context and search restores them", as
     fireEvent.change(fileSearch, { target: { value: "ReviewQueue" } });
 
     const collapse = screen.getByRole("button", {
-      name: "Collapse left columns",
+      name: "Collapse panels",
     });
+    assert.ok(collapse.closest(".detail-pane"));
+    assert.equal(collapse.closest(".window-bar"), null);
     assert.deepEqual(collapse.getAttribute("aria-controls")?.split(/\s+/), [
       "workspace-navigation",
       "pull-request-queue",
@@ -54,7 +56,7 @@ test("left columns collapse without losing context and search restores them", as
     assert.equal(controlledPanels.every((panel) => panel.hidden), true);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Expand left columns" }),
+      screen.getByRole("button", { name: "Expand panels" }),
     );
     assert.equal(controlledPanels.every((panel) => !panel.hidden), true);
     assert.equal(queueSearch.value, "keyboard");
@@ -68,7 +70,7 @@ test("left columns collapse without losing context and search restores them", as
 
     for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
       fireEvent.click(
-        screen.getByRole("button", { name: "Collapse left columns" }),
+        screen.getByRole("button", { name: "Collapse panels" }),
       );
       await act(async () => {
         fireEvent.keyDown(dom.window.document.body, {
