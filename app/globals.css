@@ -146,7 +146,33 @@ textarea:focus-visible {
 .window-shortcut {
   color: var(--muted-2);
   font-size: 11px;
+}
+
+.window-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
   justify-self: end;
+}
+
+.left-columns-toggle {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 10.5px;
+  font-weight: 620;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+}
+
+.left-columns-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+  color: var(--text-soft);
 }
 
 .app-grid {
@@ -156,6 +182,15 @@ textarea:focus-visible {
     minmax(560px, 1fr);
   height: calc(100% - 42px);
   min-height: 608px;
+}
+
+.app-grid[data-left-columns-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sidebar[hidden],
+.queue-pane[hidden] {
+  display: none;
 }
 
 .launch-shell {
@@ -1234,6 +1269,14 @@ textarea:focus-visible {
   min-height: 0;
 }
 
+.diff-workspace[data-file-browser-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.file-browser[hidden] {
+  display: none;
+}
+
 .file-browser {
   background: #0f1211;
   border-right: 1px solid var(--border);
@@ -1989,6 +2032,10 @@ textarea:focus-visible {
 
   .app-grid {
     grid-template-columns: 64px 340px minmax(440px, 1fr);
+  }
+
+  .window-shortcut {
+    display: none;
   }
 
   .sidebar {

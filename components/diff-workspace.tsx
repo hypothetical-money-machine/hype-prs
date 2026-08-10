@@ -34,6 +34,7 @@ export type DiffLayout = "split" | "unified";
 
 interface DiffWorkspaceProps {
   diff: PullRequestDiff;
+  fileBrowserCollapsed: boolean;
   layout: DiffLayout;
   loading: boolean;
   onLayoutChange(layout: DiffLayout): void;
@@ -48,6 +49,7 @@ interface ParsedDiff {
 
 export function DiffWorkspace({
   diff,
+  fileBrowserCollapsed,
   layout,
   loading,
   onLayoutChange,
@@ -120,8 +122,16 @@ export function DiffWorkspace({
   }
 
   return (
-    <div className="diff-workspace">
-      <aside className="file-browser" aria-label="Changed files">
+    <div
+      className="diff-workspace"
+      data-file-browser-collapsed={fileBrowserCollapsed}
+    >
+      <aside
+        aria-label="Changed files"
+        className="file-browser"
+        hidden={fileBrowserCollapsed}
+        id="changed-files"
+      >
         <div className="file-browser-header">
           <div>
             <span className="eyebrow">Changed files</span>
