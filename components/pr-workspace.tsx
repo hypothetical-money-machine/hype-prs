@@ -375,7 +375,7 @@ export function PrWorkspace({
       '.pr-row[aria-selected="true"]',
     );
     selectedRow?.scrollIntoView({ block: "nearest" });
-  }, [activeView, query, selectedId, sort]);
+  }, [selectedId, visiblePullRequests]);
 
   useEffect(() => {
     if (!toast) return;
