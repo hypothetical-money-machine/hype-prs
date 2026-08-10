@@ -25,6 +25,8 @@ import {
   LockKeyhole,
   MessageSquare,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -122,6 +124,7 @@ export function PrWorkspace({
     pullRequestId: string;
   }>({ diff: EMPTY_DIFF, inboxSyncedAt: "", pullRequestId: "" });
   const [diffLayout, setDiffLayout] = useState<DiffLayout>("split");
+  const [leftColumnsCollapsed, setLeftColumnsCollapsed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -317,7 +320,12 @@ export function PrWorkspace({
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        searchRef.current?.focus();
+        if (leftColumnsCollapsed) {
+          setLeftColumnsCollapsed(false);
+          window.requestAnimationFrame(() => searchRef.current?.focus());
+        } else {
+          searchRef.current?.focus();
+        }
         return;
       }
 
@@ -367,6 +375,7 @@ export function PrWorkspace({
   }, [
     activeView,
     connectionDialog,
+    leftColumnsCollapsed,
     reviewOpen,
     selectView,
     selectedId,
@@ -596,13 +605,25 @@ export function PrWorkspace({
   return (
     <main className="app-shell">
       <WindowBar
+        leftColumnsCollapsed={leftColumnsCollapsed}
         onThemeChange={setThemePreference}
+        onToggleLeftColumns={() =>
+          setLeftColumnsCollapsed((collapsed) => !collapsed)
+        }
+        showChangedFilesControl={Boolean(selectedPullRequest)}
         showSearchShortcut
         themePreference={themePreference}
       />
 
-      <div className="app-grid">
-        <aside className="sidebar">
+      <div
+        className="app-grid"
+        data-left-columns-collapsed={leftColumnsCollapsed}
+      >
+        <aside
+          className="sidebar"
+          hidden={leftColumnsCollapsed}
+          id="workspace-navigation"
+        >
           <div className="brand">
             <span className="brand-mark" aria-hidden="true">
               H
@@ -714,7 +735,12 @@ export function PrWorkspace({
           </div>
         </aside>
 
-        <section className="queue-pane" aria-label="Pull request queue">
+        <section
+          aria-label="Pull request queue"
+          className="queue-pane"
+          hidden={leftColumnsCollapsed}
+          id="pull-request-queue"
+        >
           <div className="queue-header">
             <div>
               <span className="eyebrow">
@@ -863,6 +889,7 @@ export function PrWorkspace({
               />
               <DiffWorkspace
                 diff={displayedDiff}
+                fileBrowserCollapsed={leftColumnsCollapsed}
                 layout={diffLayout}
                 loading={diffLoading}
                 onLayoutChange={setDiffLayout}
@@ -912,11 +939,17 @@ export function PrWorkspace({
 }
 
 function WindowBar({
+  leftColumnsCollapsed = false,
   onThemeChange,
+  onToggleLeftColumns,
+  showChangedFilesControl = false,
   showSearchShortcut = false,
   themePreference,
 }: {
+  leftColumnsCollapsed?: boolean;
   onThemeChange(preference: ThemePreference): void;
+  onToggleLeftColumns?(): void;
+  showChangedFilesControl?: boolean;
   showSearchShortcut?: boolean;
   themePreference: ThemePreference | null;
 }) {
@@ -930,6 +963,36 @@ function WindowBar({
       <div className="window-actions">
         {showSearchShortcut && (
           <span className="window-shortcut">⌘K search</span>
+        )}
+        {onToggleLeftColumns && (
+          <button
+            aria-controls={
+              showChangedFilesControl
+                ? "workspace-navigation pull-request-queue changed-files"
+                : "workspace-navigation pull-request-queue"
+            }
+            aria-expanded={!leftColumnsCollapsed}
+            aria-label={
+              leftColumnsCollapsed
+                ? "Expand left columns"
+                : "Collapse left columns"
+            }
+            className="left-columns-toggle"
+            onClick={onToggleLeftColumns}
+            title={
+              leftColumnsCollapsed
+                ? "Show navigation, pull requests, and changed files"
+                : "Hide navigation, pull requests, and changed files"
+            }
+            type="button"
+          >
+            {leftColumnsCollapsed ? (
+              <PanelLeftOpen aria-hidden="true" size={15} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={15} />
+            )}
+            <span>{leftColumnsCollapsed ? "Show panels" : "Hide panels"}</span>
+          </button>
         )}
         <ThemeToggle
           onChange={onThemeChange}
