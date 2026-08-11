@@ -605,12 +605,7 @@ export function PrWorkspace({
   return (
     <main className="app-shell">
       <WindowBar
-        leftColumnsCollapsed={leftColumnsCollapsed}
         onThemeChange={setThemePreference}
-        onToggleLeftColumns={() =>
-          setLeftColumnsCollapsed((collapsed) => !collapsed)
-        }
-        showChangedFilesControl={Boolean(selectedPullRequest)}
         showSearchShortcut
         themePreference={themePreference}
       />
@@ -877,6 +872,17 @@ export function PrWorkspace({
         </section>
 
         <section className="detail-pane" aria-label="Pull request detail">
+          <PanelVisibilityToggle
+            collapsed={leftColumnsCollapsed}
+            controls={
+              selectedPullRequest
+                ? "workspace-navigation pull-request-queue changed-files"
+                : "workspace-navigation pull-request-queue"
+            }
+            onToggle={() =>
+              setLeftColumnsCollapsed((collapsed) => !collapsed)
+            }
+          />
           {selectedPullRequest ? (
             <>
               <PullRequestHeader
@@ -939,17 +945,11 @@ export function PrWorkspace({
 }
 
 function WindowBar({
-  leftColumnsCollapsed = false,
   onThemeChange,
-  onToggleLeftColumns,
-  showChangedFilesControl = false,
   showSearchShortcut = false,
   themePreference,
 }: {
-  leftColumnsCollapsed?: boolean;
   onThemeChange(preference: ThemePreference): void;
-  onToggleLeftColumns?(): void;
-  showChangedFilesControl?: boolean;
   showSearchShortcut?: boolean;
   themePreference: ThemePreference | null;
 }) {
@@ -964,42 +964,42 @@ function WindowBar({
         {showSearchShortcut && (
           <span className="window-shortcut">⌘K search</span>
         )}
-        {onToggleLeftColumns && (
-          <button
-            aria-controls={
-              showChangedFilesControl
-                ? "workspace-navigation pull-request-queue changed-files"
-                : "workspace-navigation pull-request-queue"
-            }
-            aria-expanded={!leftColumnsCollapsed}
-            aria-label={
-              leftColumnsCollapsed
-                ? "Expand left columns"
-                : "Collapse left columns"
-            }
-            className="left-columns-toggle"
-            onClick={onToggleLeftColumns}
-            title={
-              leftColumnsCollapsed
-                ? "Show navigation, pull requests, and changed files"
-                : "Hide navigation, pull requests, and changed files"
-            }
-            type="button"
-          >
-            {leftColumnsCollapsed ? (
-              <PanelLeftOpen aria-hidden="true" size={15} />
-            ) : (
-              <PanelLeftClose aria-hidden="true" size={15} />
-            )}
-            <span>{leftColumnsCollapsed ? "Show panels" : "Hide panels"}</span>
-          </button>
-        )}
         <ThemeToggle
           onChange={onThemeChange}
           preference={themePreference}
         />
       </div>
     </header>
+  );
+}
+
+function PanelVisibilityToggle({
+  collapsed,
+  controls,
+  onToggle,
+}: {
+  collapsed: boolean;
+  controls: string;
+  onToggle(): void;
+}) {
+  const action = collapsed ? "Expand" : "Collapse";
+
+  return (
+    <button
+      aria-controls={controls}
+      aria-expanded={!collapsed}
+      aria-label={`${action} panels`}
+      className="panel-visibility-toggle"
+      onClick={onToggle}
+      title={`${action} panels`}
+      type="button"
+    >
+      {collapsed ? (
+        <PanelLeftOpen aria-hidden="true" size={16} />
+      ) : (
+        <PanelLeftClose aria-hidden="true" size={16} />
+      )}
+    </button>
   );
 }
 
