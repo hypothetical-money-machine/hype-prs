@@ -281,6 +281,7 @@ yet.
 | `npm run dev` | Start the vinext web development server. |
 | `npm run build` | Build the production web application. |
 | `npm run start` | Run the built web application. |
+| `npm run deploy` | Build and deploy the web application to Cloudflare Workers. |
 | `npm run lint` | Run ESLint with the repository configuration. |
 | `npm run test:unit` | Run TypeScript unit tests under `tests/*.test.ts`. |
 | `npm run test:rendered` | Test the rendered production HTML. |
