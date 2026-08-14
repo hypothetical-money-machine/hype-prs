@@ -29,12 +29,11 @@ The published `@pierre/diffs` 1.2.12 package contains `LICENSE.md` and no
 attributions must also be reproduced as required by section 4(d) of the
 Apache License 2.0.
 
-Electron release packaging must include the complete, unmodified upstream
-`LICENSE.md` in the application distribution, under the third-party license
-materials for `@pierre/diffs`. A notice summary or link alone is not a
-substitute for that license copy. Web release artifacts that distribute
-bundled `@pierre/diffs` code must likewise make the complete license available
-to recipients.
+Release artifacts that distribute bundled `@pierre/diffs` code must include
+the complete, unmodified upstream `LICENSE.md` in the distribution, under the
+third-party license materials for `@pierre/diffs`. A notice summary or link
+alone is not a substitute for that license copy. The web release makes the
+complete license available to recipients.
 
 This summary is provided for release engineering convenience. The upstream
 license text controls if this summary and the license differ.

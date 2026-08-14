@@ -258,8 +258,8 @@ export function workerFactory(): Worker {
 
 Wrap the review surface with `WorkerPoolContextProvider`, choose a small pool,
 and preload only common languages. Verify the worker URL, content security
-policy, and syntax highlighting in both the production web build and packaged
-Electron renderer before enabling it by default.
+policy, and syntax highlighting in the production web build before enabling it
+by default.
 
 ## Security and distribution
 
@@ -268,10 +268,9 @@ backend where policy permits, and the user's approved renderer. Do not send
 source or diffs to analytics, crash-reporting payloads, or unrelated third
 parties.
 
-The web and Electron distributions must comply with
-[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). Electron packaging must
-include the complete upstream `@pierre/diffs` `LICENSE.md`, not only a notice
-or web link.
+The web distribution must comply with
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and expose the complete
+upstream `@pierre/diffs` `LICENSE.md`, not only a notice or web link.
 
 ## Primary sources
 

@@ -5,7 +5,6 @@ import type { ComponentType } from "react";
 import { JSDOM } from "jsdom";
 import { PrWorkspace } from "../components/pr-workspace";
 import { demoInbox } from "../lib/demo-data";
-import type { GitHubBridge } from "../lib/types";
 
 test("workspace panels collapse from the viewer boundary and restore context", async () => {
   const dom = installDom();
@@ -16,7 +15,6 @@ test("workspace panels collapse from the viewer boundary and restore context", a
       "@testing-library/react"
     );
     cleanupDom = cleanup;
-    dom.window.hypePrs = disconnectedGateway();
 
     render(
       createElement(PrWorkspace as ComponentType<WorkspaceProps>, {
@@ -103,30 +101,6 @@ function controlledElements(button: HTMLElement): HTMLElement[] {
   });
 }
 
-function disconnectedGateway(): GitHubBridge {
-  const unavailable = async () => {
-    throw new Error("Unexpected live GitHub call in preview mode");
-  };
-
-  return {
-    connectionStatus: async () => ({
-      authKind: null,
-      configured: false,
-      connected: false,
-      expiresAt: null,
-      mode: "demo",
-      viewer: null,
-    }),
-    disconnect: unavailable,
-    getInbox: unavailable,
-    getPullDiff: unavailable,
-    openExternal: unavailable,
-    pollDeviceFlow: unavailable,
-    startDeviceFlow: unavailable,
-    submitReview: unavailable,
-  };
-}
-
 let originalGlobals: Map<PropertyKey, PropertyDescriptor | undefined>;
 
 function installDom(): JSDOM {
@@ -156,6 +130,8 @@ function installDom(): JSDOM {
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
     SVGElement: dom.window.SVGElement,
     cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+    fetch: () =>
+      Promise.reject(new Error("No live GitHub in preview mode")),
     window: dom.window,
   };
 

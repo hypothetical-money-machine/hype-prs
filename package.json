@@ -1,9 +1,8 @@
 {
   "name": "hype-prs",
   "version": "0.1.0",
-  "description": "An action-first GitHub pull request companion for macOS.",
+  "description": "An action-first GitHub pull request companion.",
   "private": true,
-  "main": "electron/main.mjs",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -12,14 +11,10 @@
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "deploy": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext deploy",
-    "test": "npm run test:unit && npm run build && npm run test:rendered && npm run electron:renderer",
+    "test": "npm run test:unit && npm run build && npm run test:rendered",
     "test:unit": "tsx --test tests/*.test.ts",
     "test:rendered": "node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "electron:renderer": "vite build --config electron/vite.config.ts",
-    "electron:dev": "HYPE_PRS_WEB_URL=http://localhost:3000 electron .",
-    "electron:pack": "node electron/verify-config.mjs && npm run electron:renderer && ELECTRON_BUILDER_CACHE=/private/tmp/hype-prs-electron-builder-cache ELECTRON_CACHE=/private/tmp/hype-prs-electron-cache CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --arm64",
-    "electron:pack:demo": "HYPE_ALLOW_UNCONFIGURED_BUILD=1 npm run electron:pack"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
     "@pierre/diffs": "1.2.12",
@@ -39,8 +34,6 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
-    "electron": "43.2.0",
-    "electron-builder": "26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.12",
     "jsdom": "30.0.1",
@@ -56,49 +49,5 @@
   "overrides": {
     "postcss": "8.5.24",
     "sharp": "0.35.3"
-  },
-  "build": {
-    "appId": "com.morgan.hype-prs",
-    "productName": "Hype PRs",
-    "asar": true,
-    "npmRebuild": false,
-    "files": [
-      "dist-electron/renderer/**/*",
-      "electron/main.mjs",
-      "electron/preload.cjs",
-      "package.json",
-      "shared/github-api.mjs",
-      "!node_modules/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "electron/config",
-        "to": "config"
-      },
-      {
-        "from": "node_modules/@pierre/diffs/LICENSE.md",
-        "to": "licenses/@pierre-diffs-LICENSE.md"
-      },
-      {
-        "from": "THIRD_PARTY_NOTICES.md",
-        "to": "licenses/THIRD_PARTY_NOTICES.md"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "extendInfo": {
-        "LSUIElement": true
-      },
-      "hardenedRuntime": true,
-      "icon": "public/favicon-v5.png",
-      "target": [
-        {
-          "arch": [
-            "arm64"
-          ],
-          "target": "dir"
-        }
-      ]
-    }
   }
 }

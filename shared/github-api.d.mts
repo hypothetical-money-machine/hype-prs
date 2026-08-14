@@ -62,30 +62,6 @@ export function submitReviewWithToken(
   signal?: AbortSignal,
 ): Promise<{ submittedAt: string }>;
 
-export function startDeviceFlow(
-  clientId: string,
-  signal?: AbortSignal,
-): Promise<{
-  deviceCode: string;
-  expiresIn: number;
-  interval: number;
-  userCode: string;
-  verificationUri: string;
-}>;
-
-export function pollDeviceFlow(
-  clientId: string,
-  deviceCode: string,
-  signal?: AbortSignal,
-): Promise<
-  | { status: "pending" | "slow_down" }
-  | { status: "token"; tokenSet: TokenSet }
-  | {
-      status: "expired" | "denied" | "error";
-      message: string;
-    }
->;
-
 export function exchangeAuthorizationCode(
   input: {
     clientId: string;
@@ -100,7 +76,7 @@ export function exchangeAuthorizationCode(
 export function refreshUserToken(
   input: {
     clientId: string;
-    clientSecret?: string;
+    clientSecret: string;
     refreshToken: string;
   },
   signal?: AbortSignal,

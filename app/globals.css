@@ -2269,29 +2269,6 @@ textarea:focus-visible {
   padding-top: 13px;
 }
 
-.device-code {
-  background: var(--device-bg);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-radius: 9px;
-  color: var(--accent);
-  display: block;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 25px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  margin: 17px auto 12px;
-  padding: 13px 18px;
-}
-
-.polling-state {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  font-size: 11.5px;
-  gap: 6px;
-  justify-content: center;
-}
-
 .review-modal {
   width: min(680px, calc(100vw - 60px));
 }

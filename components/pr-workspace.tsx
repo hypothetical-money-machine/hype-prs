@@ -63,8 +63,6 @@ import {
 } from "@/lib/pr-views";
 import type {
   ConnectionStatus,
-  DeviceFlowPoll,
-  DeviceFlowStart,
   InboxPayload,
   PullRequestDiff,
   PullRequestSummary,
@@ -132,9 +130,6 @@ export function PrWorkspace({
   const [warning, setWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [connectionDialog, setConnectionDialog] = useState(false);
-  const [deviceFlow, setDeviceFlow] = useState<DeviceFlowStart | null>(null);
-  const [devicePollState, setDevicePollState] =
-    useState<DeviceFlowPoll["status"] | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [themePreference, setThemePreference] = useThemePreference();
   const listRef = useRef<HTMLDivElement>(null);
@@ -340,7 +335,6 @@ export function PrWorkspace({
         if (connectionDialog) {
           event.preventDefault();
           setConnectionDialog(false);
-          setDeviceFlow(null);
           return;
         }
       }
@@ -397,64 +391,13 @@ export function PrWorkspace({
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  useEffect(() => {
-    if (!deviceFlow || devicePollState === "connected") return;
-    const delaySeconds =
-      devicePollState === "slow_down"
-        ? deviceFlow.interval + 5
-        : deviceFlow.interval;
-    const timeout = window.setTimeout(async () => {
-      try {
-        const result = await gateway().pollDeviceFlow();
-        setDevicePollState(result.status);
-        if (result.status === "connected") {
-          const nextConnection = await gateway().connectionStatus();
-          setConnection(nextConnection);
-          setUsingDemo(false);
-          setLaunchView("workspace");
-          setConnectionDialog(false);
-          setDeviceFlow(null);
-          setToast(`Connected as ${result.viewer.login}`);
-          const liveInbox = await gateway().getInbox();
-          setInboxData(liveInbox);
-          setSelectedId(liveInbox.pullRequests[0]?.id ?? "");
-        } else if (
-          result.status === "expired" ||
-          result.status === "denied" ||
-          result.status === "error"
-        ) {
-          setError(result.message);
-          setDeviceFlow(null);
-        }
-      } catch (nextError) {
-        setError(messageFrom(nextError));
-        setDeviceFlow(null);
-      }
-    }, delaySeconds * 1000);
-    return () => window.clearTimeout(timeout);
-  }, [deviceFlow, devicePollState]);
-
   async function startConnection() {
     if (!connectionChecked) return;
     if (!connection.configured) {
       setConnectionDialog(true);
       return;
     }
-    if (connection.authKind === "redirect") {
-      beginWebConnection();
-      return;
-    }
-
-    setError(null);
-    setConnectionDialog(true);
-    try {
-      const flow = await gateway().startDeviceFlow();
-      setDeviceFlow(flow);
-      setDevicePollState("pending");
-      await gateway().openExternal(flow.verificationUri);
-    } catch (nextError) {
-      setError(messageFrom(nextError));
-    }
+    beginWebConnection();
   }
 
   async function disconnect() {
@@ -480,8 +423,6 @@ export function PrWorkspace({
         pullRequestId: "",
       });
       setConnectionDialog(false);
-      setDeviceFlow(null);
-      setDevicePollState(null);
       setLaunchView("login");
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -588,16 +529,8 @@ export function PrWorkspace({
         {launchView === "login" && connectionDialog && (
           <ConnectionDialog
             configured={connection.configured}
-            deviceFlow={deviceFlow}
-            onClose={() => {
-              setConnectionDialog(false);
-              setDeviceFlow(null);
-            }}
+            onClose={() => setConnectionDialog(false)}
             onStart={() => void startConnection()}
-            polling={
-              devicePollState === "pending" ||
-              devicePollState === "slow_down"
-            }
           />
         )}
       </main>
@@ -917,13 +850,8 @@ export function PrWorkspace({
       {connectionDialog && (
         <ConnectionDialog
           configured={connection.configured}
-          deviceFlow={deviceFlow}
-          onClose={() => {
-            setConnectionDialog(false);
-            setDeviceFlow(null);
-          }}
+          onClose={() => setConnectionDialog(false)}
           onStart={() => void startConnection()}
-          polling={devicePollState === "pending" || devicePollState === "slow_down"}
         />
       )}
 
@@ -1047,9 +975,9 @@ const MARKETING_FEATURES = [
     title: "Keyboard-first",
   },
   {
-    body: "Works in the browser and in a macOS menu-bar panel. Credentials stay encrypted, and Hype never bypasses your organization policy.",
+    body: "Works in the browser. Credentials stay encrypted on the server, and Hype never bypasses your organization policy.",
     icon: ShieldCheck,
-    title: "Web and desktop",
+    title: "Private by design",
   },
 ] as const;
 
@@ -1151,8 +1079,8 @@ function LaunchLogin({
             </div>
 
             <p className="hero-sub">
-              No account needed to look around · Web and macOS · Never bypasses
-              your organization policy
+              No account needed to look around · Works in your browser · Never
+              bypasses your organization policy
             </p>
           </div>
 
@@ -1453,16 +1381,12 @@ function PullRequestHeader({
 
 function ConnectionDialog({
   configured,
-  deviceFlow,
   onClose,
   onStart,
-  polling,
 }: {
   configured: boolean;
-  deviceFlow: DeviceFlowStart | null;
   onClose(): void;
   onStart(): void;
-  polling: boolean;
 }) {
   return (
     <div className="modal-backdrop" role="presentation">
@@ -1496,28 +1420,9 @@ function ConnectionDialog({
             <div className="configuration-callout">
               <Code2 aria-hidden="true" size={18} />
               <span>
-                Configure the GitHub App client in the web host or Electron
-                package. No personal access token is accepted by the UI.
+                Configure the GitHub App client for the web host. No personal
+                access token is accepted by the UI.
               </span>
-            </div>
-          </>
-        ) : deviceFlow ? (
-          <>
-            <p>
-              GitHub opened in your browser. Confirm the account and enter this
-              one-time code:
-            </p>
-            <button
-              className="device-code"
-              onClick={() => void navigator.clipboard.writeText(deviceFlow.userCode)}
-              title="Copy one-time code"
-              type="button"
-            >
-              {deviceFlow.userCode}
-            </button>
-            <div className="polling-state">
-              {polling && <LoaderCircle aria-hidden="true" className="spin" size={16} />}
-              {polling ? "Waiting for GitHub…" : "Ready to continue"}
             </div>
           </>
         ) : (
