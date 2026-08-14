@@ -342,6 +342,7 @@ textarea:focus-visible {
   min-height: 540px;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 0 24px;
   position: relative;
   scrollbar-color: var(--scroll-thumb) transparent;
   scrollbar-width: thin;
