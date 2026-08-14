@@ -20,6 +20,7 @@ import {
   GitPullRequest,
   History,
   Inbox,
+  Layers,
   ListFilter,
   LoaderCircle,
   LockKeyhole,
@@ -35,6 +36,7 @@ import {
   WifiOff,
   X,
   XCircle,
+  Zap,
 } from "lucide-react";
 import {
   Fragment,
@@ -1018,6 +1020,72 @@ function LaunchChecking() {
   );
 }
 
+const MARKETING_FEATURES = [
+  {
+    body: "Open with the pull requests that need you now, ordered by obligation — review requests, failing checks, conflicts, and work ready to ship.",
+    icon: Inbox,
+    title: "Action-first inbox",
+  },
+  {
+    body: "Every row carries a reason chip, a plain-language explanation, and a timestamp. No mystery about why a pull request is where it is.",
+    icon: Zap,
+    title: "Explainable ranking",
+  },
+  {
+    body: "A directory-first file tree, path filtering, and virtualized split or unified diffs — all in one surface, without leaving the queue.",
+    icon: Layers,
+    title: "Files and diffs in place",
+  },
+  {
+    body: "Comment, approve, or request changes with a summary. Hype re-checks the exact commits before it submits, so reviews land safe.",
+    icon: GitPullRequest,
+    title: "Formal reviews",
+  },
+  {
+    body: "Skip the mouse. J/K to move, Option+Arrow to switch views, and Command or Control+K to jump to search.",
+    icon: Activity,
+    title: "Keyboard-first",
+  },
+  {
+    body: "Works in the browser and in a macOS menu-bar panel. Credentials stay encrypted, and Hype never bypasses your organization policy.",
+    icon: ShieldCheck,
+    title: "Web and desktop",
+  },
+] as const;
+
+const MARKETING_FAQ = [
+  {
+    answer:
+      "Hype is an action-first pull request inbox. Instead of an alphabetical repository list, it shows a queue of the pull requests that need you, explains why each one does, and lets you open the files, read the diff, and submit a review without switching tools.",
+    question: "What exactly is Hype?",
+  },
+  {
+    answer:
+      "Connect with GitHub and Hype finds your open pull requests from four angles: ones you authored, ones assigned to you, ones requesting your review, and ones you have reviewed. It deduplicates the results into a single queue.",
+    question: "Where do the pull requests in my inbox come from?",
+  },
+  {
+    answer:
+      "Hype connects through an approved GitHub App, not a personal access token. Requested access is read-focused — pull requests, metadata, checks, and review submission — and your normal organization approval, SSO, and repository permissions still apply.",
+    question: "What does Hype need access to do?",
+  },
+  {
+    answer:
+      "Preview mode loads a full workspace with synthetic pull requests and diffs. You can explore every view, search, read diffs, and practice submitting reviews without any GitHub account. Reviews in preview mode change the local demo only.",
+    question: "Do I need a GitHub account to explore it now?",
+  },
+  {
+    answer:
+      "A selected diff is accepted only while its base and head revisions stay stable. When a diff is oversized, binary, too many files, or cannot be parsed safely, Hype shows a clear degraded state with an Open in GitHub fallback instead of a blank pane.",
+    question: "How does Hype handle large or unusual diffs?",
+  },
+  {
+    answer:
+      "Not in this release. The MVP focuses on read-focused triage and pull-request-level review. Line-level suggestions, local snooze or pinning, background sync, and merge or close mutations are on the roadmap but are not part of the current scope.",
+    question: "What is not included yet?",
+  },
+] as const;
+
 function LaunchLogin({
   checking,
   configured,
@@ -1032,74 +1100,205 @@ function LaunchLogin({
   onSignIn(): void;
 }) {
   return (
-    <section className="launch-stage" aria-labelledby="launch-title">
+    <div className="launch-stage">
       <div className="launch-glow" aria-hidden="true" />
-      <div className="launch-card">
-        <div className="launch-brand" aria-hidden="true">
-          H
-        </div>
-        <span className="eyebrow">Your pull request pulse</span>
-        <h1 id="launch-title">Welcome to Hype</h1>
-        <p>
-          Sign in with GitHub to see the pull requests that need your attention,
-          review changes, and keep work moving.
-        </p>
+      <div className="marketing">
+        <section className="marketing-hero" aria-labelledby="launch-title">
+          <div className="marketing-copy">
+            <div className="launch-brand" aria-hidden="true">
+              H
+            </div>
+            <span className="eyebrow">Your pull request pulse</span>
+            <h1 id="launch-title">See what needs you now.</h1>
+            <p>
+              Hype turns your GitHub pull requests — across every repository —
+              into one action-first queue. It explains why each one needs
+              attention, opens the files and diff for you, and lets you submit a
+              formal review without leaving the app.
+            </p>
 
-        {error && (
-          <div className="launch-error" role="alert">
-            <WifiOff aria-hidden="true" size={15} />
-            <span>{error}</span>
+            {error && (
+              <div className="launch-error" role="alert">
+                <WifiOff aria-hidden="true" size={15} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="hero-actions">
+              <button
+                aria-busy={checking}
+                className="primary-button launch-sign-in"
+                disabled={checking}
+                onClick={onSignIn}
+                type="button"
+              >
+                {checking ? (
+                  <LoaderCircle aria-hidden="true" className="spin" size={16} />
+                ) : (
+                  <LockKeyhole aria-hidden="true" size={16} />
+                )}
+                Continue with GitHub
+                {!checking && <ArrowUpRight aria-hidden="true" size={15} />}
+              </button>
+              <button
+                className="secondary-button"
+                onClick={onEnterPreview}
+                type="button"
+              >
+                <Code2 aria-hidden="true" size={15} />
+                Explore preview mode
+              </button>
+            </div>
+
+            <p className="hero-sub">
+              No account needed to look around · Web and macOS · Never bypasses
+              your organization policy
+            </p>
           </div>
-        )}
 
-        <button
-          aria-busy={checking}
-          className="primary-button launch-sign-in"
-          disabled={checking}
-          onClick={onSignIn}
-          type="button"
-        >
-          {checking ? (
-            <LoaderCircle aria-hidden="true" className="spin" size={16} />
-          ) : (
-            <LockKeyhole aria-hidden="true" size={16} />
-          )}
-          Continue with GitHub
-          {!checking && <ArrowUpRight aria-hidden="true" size={15} />}
-        </button>
+          <div className="marketing-mock" aria-hidden="true">
+            <div className="mock-window">
+              <div className="mock-bar">
+                <span className="mock-dot red" />
+                <span className="mock-dot amber" />
+                <span className="mock-dot green" />
+                <span className="mock-title">Hype — action queue</span>
+              </div>
+              <div className="mock-body">
+                <div className="mock-eyebrow">Your action queue</div>
+                <div className="mock-row mock-row-focus">
+                  <span className="mock-repo">acme/console</span>
+                  <span>
+                    <strong>Keyboard review queue</strong>
+                    <small>
+                      Review requested 18h ago ·
+                      <span className="mock-tag request">review requested</span>
+                    </small>
+                  </span>
+                </div>
+                <div className="mock-row">
+                  <span className="mock-repo">acme/api</span>
+                  <span>
+                    <strong>Guard webhook retries</strong>
+                    <small>
+                      Checks failing 3h ago ·
+                      <span className="mock-tag failed">ci failing</span>
+                    </small>
+                  </span>
+                </div>
+                <div className="mock-row">
+                  <span className="mock-repo">acme/design-system</span>
+                  <span>
+                    <strong>Status badge contrast</strong>
+                    <small>
+                      Team review requested 45h ago ·
+                      <span className="mock-tag approved">approved</span>
+                    </small>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-        {!checking && !configured && (
-          <p className="launch-configuration-note">
-            Live sign-in is not configured in this preview build.
+        <section className="marketing-section" aria-labelledby="marketing-features-title">
+          <div className="marketing-head">
+            <span className="eyebrow">Why Hype</span>
+            <h2 id="marketing-features-title">
+              Built around the moment you triage
+            </h2>
+            <p>
+              One surface for the whole review loop — from noticing the
+              pull request to reading the change to submitting a decision.
+            </p>
+          </div>
+          <div className="feature-grid">
+            {MARKETING_FEATURES.map((feature) => (
+              <div className="feature-card" key={feature.title}>
+                <span className="feature-icon">
+                  <feature.icon aria-hidden="true" size={18} />
+                </span>
+                <div>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="marketing-section" aria-labelledby="marketing-faq-title">
+          <div className="marketing-head">
+            <span className="eyebrow">Good to know</span>
+            <h2 id="marketing-faq-title">Frequently asked questions</h2>
+            <p>The short answers to the things people ask first.</p>
+          </div>
+          <div className="faq-list">
+            {MARKETING_FAQ.map((item) => (
+              <details className="faq-item" key={item.question}>
+                <summary>
+                  <span>{item.question}</span>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="faq-chevron"
+                    size={16}
+                  />
+                </summary>
+                <p>{item.answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="marketing-cta" aria-labelledby="marketing-cta-title">
+          <div>
+            <h2 id="marketing-cta-title">Ready when you are</h2>
+            <p>
+              Connect GitHub for your live queue, or explore preview mode to see
+              the full interface right now.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <button
+              className="primary-button"
+              disabled={checking}
+              onClick={onSignIn}
+              type="button"
+            >
+              {checking ? (
+                <LoaderCircle aria-hidden="true" className="spin" size={16} />
+              ) : (
+                <LockKeyhole aria-hidden="true" size={16} />
+              )}
+              Continue with GitHub
+            </button>
+            <button
+              className="secondary-button"
+              onClick={onEnterPreview}
+              type="button"
+            >
+              <Code2 aria-hidden="true" size={15} />
+              Open preview mode
+            </button>
+          </div>
+          <p className="hero-sub">
+            {checking
+              ? "Checking your session…"
+              : configured
+                ? "Live sign-in is ready."
+                : "Live sign-in is not configured in this preview build."}
           </p>
-        )}
+        </section>
 
-        <div className="launch-divider">
-          <span>or</span>
-        </div>
-
-        <button
-          className="preview-button"
-          onClick={onEnterPreview}
-          type="button"
-        >
-          <Code2 aria-hidden="true" size={16} />
+        <footer className="marketing-footer">
           <span>
-            <strong>Explore preview mode</strong>
-            <small>Try Hype with synthetic pull requests. No sign-in needed.</small>
+            <ShieldCheck aria-hidden="true" size={14} />
+            Hype is another GitHub client. Organization approvals, SSO, and
+            managed-device policies still apply.
           </span>
-          <ArrowUpRight aria-hidden="true" size={15} />
-        </button>
-
-        <div className="launch-policy">
-          <ShieldCheck aria-hidden="true" size={15} />
-          <span>
-            Organization approvals, SSO, and managed-device policies still
-            apply.
-          </span>
-        </div>
+        </footer>
       </div>
-    </section>
+    </div>
   );
 }
 
