@@ -563,11 +563,11 @@ test("refuses a review when the base revision moved after display", async () => 
   }
 });
 
-test("web refresh sends the client secret while device refresh omits it", async () => {
+test("web refresh sends the client secret", async () => {
   const originalFetch = globalThis.fetch;
-  const requestBodies: string[] = [];
+  let requestBody = "";
   globalThis.fetch = async (_input, init) => {
-    requestBodies.push(String(init?.body));
+    requestBody = String(init?.body);
     return Response.json({
       access_token: "access",
       refresh_token: "refresh-next",
@@ -581,12 +581,7 @@ test("web refresh sends the client secret while device refresh omits it", async 
       clientSecret: "secret",
       refreshToken: "refresh",
     });
-    await refreshUserToken({
-      clientId: "client",
-      refreshToken: "refresh",
-    });
-    assert.match(requestBodies[0] ?? "", /client_secret=secret/);
-    assert.doesNotMatch(requestBodies[1] ?? "", /client_secret=/);
+    assert.match(requestBody, /client_secret=secret/);
   } finally {
     globalThis.fetch = originalFetch;
   }

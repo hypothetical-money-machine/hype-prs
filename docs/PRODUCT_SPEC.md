@@ -14,14 +14,9 @@ across multiple repositories. Its first screen answers:
 3. Which of my pull requests is unhealthy or ready?
 4. What changed recently?
 
-The product is a web application first and an Electron application on macOS.
-Both surfaces render the same inbox, pull request detail, file tree, diff, and
-review UI. Electron adds an anchored menu-bar panel and native credential
-storage.
-
-Menu-bar access is not an always-on-top mode. Clicking the macOS menu-bar item
-shows or hides the panel beneath the item; the packaged panel hides on blur and
-is explicitly configured with `alwaysOnTop: false`.
+The product is a web application. It renders the inbox, pull request detail,
+file tree, diff, and review UI in the browser, with credentials stored
+server-side.
 
 The default is **Needs attention**, not a repository-alphabetical list.
 Repository and author groupings are available as secondary views.
@@ -34,8 +29,6 @@ Repository and author groupings are available as secondary views.
   is approved and green.
 - **Maintainer:** move from a personal action queue into repository or author
   groupings when broader context is useful.
-- **Engineer on an approved managed Mac:** regain desktop visibility without
-  enrolling a personal phone or bypassing employer access policy.
 
 ## Implemented product model
 
@@ -128,11 +121,6 @@ meaningful activity, oldest created, and raw GitHub update time. Repository and
 author views keep their actionable-group order and apply the selected sort
 within each group.
 
-The Electron menu-bar title shows a compact, high-confidence action count based
-on current direct review requests and authored blockers or ready state. Modeled
-team/mention states count when present. Stale-only items can appear in Needs
-attention without increasing that compact badge.
-
 ## Core workflows
 
 ### 1. Launch and sign in
@@ -155,13 +143,10 @@ Demo review submission changes demo state only.
 - The web app uses GitHub's authorization-code flow with state and PKCE. The
   server exchanges the code and stores the token set in an encrypted,
   `HttpOnly`, `SameSite=Lax` session cookie.
-- Electron uses GitHub's device flow with a public GitHub App client ID. It
-  opens only GitHub's HTTPS verification URL and stores the resulting token set
-  using macOS Keychain-backed Electron `safeStorage`.
-- Both flows validate the connected viewer before loading live data.
-- Disconnect deletes the active web cookie or Electron credential file and
-  returns the interface to the unauthenticated landing page. Demo mode remains
-  available only through the landing page's explicit preview action.
+- The flow validates the connected viewer before loading live data.
+- Disconnect deletes the active web cookie and returns the interface to the
+  unauthenticated landing page. Demo mode remains available only through the
+  landing page's explicit preview action.
 
 The connection UI states that Hype PRs is another GitHub client and that normal
 GitHub App installation, organization approval, SSO, and managed-device policy
@@ -169,13 +154,13 @@ still apply.
 
 ### 4. Triage the inbox
 
-1. Open Hype PRs in the browser or from the macOS menu bar.
+1. Open Hype PRs in the browser.
 2. Start in Needs attention and read the reason shown for each item.
 3. Switch among the ten implemented views or choose an explicit sort.
 4. Search by PR content or reason.
 5. Select with the pointer or use `J`/`K`; use `Command/Ctrl+K` to focus search
    and `Option+Arrow` to move between views.
-6. Refresh manually from the UI or Electron tray menu.
+6. Refresh manually from the UI.
 
 ### 5. Browse changed files and diffs
 
@@ -214,7 +199,7 @@ Line-level comments and suggestions are not part of this MVP.
 
 ## MVP scope
 
-- Web-first React UI shared with Electron.
+- Web-first React UI.
 - Demo mode with representative synthetic data.
 - GitHub.com user connection through an approved GitHub App.
 - Live authored, assigned, review-requested, and reviewed PR discovery.
@@ -224,14 +209,12 @@ Line-level comments and suggestions are not part of this MVP.
 - Pull request metadata, status summary, file tree, split/unified diff, and
   large/non-text fallback.
 - Formal pull-request review submission with summary.
-- macOS Electron menu-bar panel, compact action count, Keychain-backed
-  credentials, and Open in GitHub.
+- Open in GitHub.
 - Safe handling of disconnected, denied, expired, rate-limited, unavailable,
   and truncated states.
 
 ## Explicit non-goals for MVP
 
-- Always-on-top window behavior.
 - Full Git operations: clone, checkout, commit, push, rebase, or conflict
   resolution.
 - Creating, editing, closing, merging, or updating pull requests.
@@ -290,24 +273,10 @@ current MVP complete:
 - Require same-origin requests for disconnect and review mutations.
 - Return sanitized public errors without token or response-header disclosure.
 
-### Electron
-
-- Put only the public GitHub App client ID in the package.
-- Store the token set in a mode-`0600` file encrypted with macOS
-  Keychain-backed `safeStorage`; fail closed if Keychain encryption is
-  unavailable.
-- Use a sandboxed renderer with Node integration disabled, context isolation
-  enabled, web security enabled, and a narrow preload bridge.
-- Validate IPC senders and mutation payloads.
-- Serve packaged assets through the restricted `hype://app` protocol, deny
-  webviews and new windows, and allow `localhost:3000` only in unpackaged
-  development builds.
-- Redact bearer tokens from surfaced Electron errors.
-
 ### Distribution
 
-- Keep `@pierre/diffs` attribution and its complete Apache-2.0 license with web
-  and Electron distributions as described in `THIRD_PARTY_NOTICES.md`.
+- Keep `@pierre/diffs` attribution and its complete Apache-2.0 license with the
+  web distribution as described in `THIRD_PARTY_NOTICES.md`.
 - Do not place credentials in committed configuration, renderer storage, URLs,
   logs, analytics, or crash reports.
 
@@ -322,15 +291,8 @@ Assert complete ordered PR ID lists for view tests.
 ### GitHub integration
 
 Against a controlled GitHub test repository, verify web authorization,
-Electron device flow, token refresh, inbox deduplication, diff/file pagination,
-all three review events, revocation, organization denial, rate limiting, and
-disconnect.
-
-### Desktop
-
-Verify the packaged arm64 app creates one menu-bar item, keeps the Dock hidden,
-anchors the panel to the item, remains not-always-on-top, hides on blur, updates
-the compact action count after refresh, and blocks untrusted navigation/IPC.
+token refresh, inbox deduplication, diff/file pagination, all three review
+events, revocation, organization denial, rate limiting, and disconnect.
 
 ### Diff and degraded states
 
@@ -340,8 +302,8 @@ fallback behavior.
 
 ## Acceptance criteria
 
-1. Browser and Electron render the same `PrWorkspace` feature surface and open
-   in Needs attention.
+1. The browser renders the `PrWorkspace` feature surface and opens in
+   Needs attention.
 2. All ten documented views are selectable and produce deterministic membership
    and order from a fixed fixture.
 3. The default list is action-ranked; repository and author names are only
@@ -358,12 +320,9 @@ fallback behavior.
    of a blank pane.
 9. Comment, Approve, and Request changes submit a formal review for the selected
    PR and refresh its state; no line-comment behavior is implied.
-10. The macOS menu-bar item toggles an anchored panel that is explicitly not
-    always on top and displays the cached high-confidence action count.
-11. Web auth uses state, PKCE, encrypted `HttpOnly` cookies, and same-origin
-    mutation checks; Electron uses Keychain-backed encryption, sandboxed
-    rendering, validated IPC, and GitHub-only external navigation.
-12. With no GitHub configuration, demo mode remains fully navigable and cannot
+10. Web auth uses state, PKCE, encrypted `HttpOnly` cookies, and same-origin
+    mutation checks; external navigation is limited to GitHub.
+11. With no GitHub configuration, demo mode remains fully navigable and cannot
     mutate GitHub.
 
 ## Implementation references
@@ -375,6 +334,5 @@ fallback behavior.
 - Shared GitHub transport and normalization: `shared/github-api.mjs`
 - Web session and routes: `lib/server/github-session.ts` and
   `app/api/github/`
-- Electron shell and bridge: `electron/main.mjs` and `electron/preload.cjs`
 - Diff integration contract: `docs/DIFF_VIEWER.md`
 - Third-party obligations: `THIRD_PARTY_NOTICES.md`

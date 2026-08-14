@@ -2,8 +2,6 @@
 
 import type {
   ConnectionStatus,
-  DeviceFlowPoll,
-  DeviceFlowStart,
   GitHubBridge,
   InboxPayload,
   PullRequestDiff,
@@ -11,9 +9,6 @@ import type {
 } from "./types";
 
 export function gateway(): GitHubBridge {
-  if (typeof window !== "undefined" && window.hypePrs) {
-    return window.hypePrs;
-  }
   return webGateway;
 }
 
@@ -53,14 +48,6 @@ const webGateway: GitHubBridge = {
       throw new Error("Only GitHub links can be opened.");
     }
     window.open(parsed.toString(), "_blank", "noopener,noreferrer");
-  },
-
-  async pollDeviceFlow(): Promise<DeviceFlowPoll> {
-    throw new Error("Device flow is available in the macOS app.");
-  },
-
-  async startDeviceFlow(): Promise<DeviceFlowStart> {
-    throw new Error("Device flow is available in the macOS app.");
   },
 
   async submitReview(input: SubmitReviewInput) {

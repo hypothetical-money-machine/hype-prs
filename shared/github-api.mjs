@@ -359,88 +359,6 @@ export async function submitReviewWithToken(token, input, signal) {
   return { submittedAt: review.submitted_at ?? new Date().toISOString() };
 }
 
-export async function startDeviceFlow(clientId, signal) {
-  if (!clientId) {
-    throw new GitHubApiError("GitHub App client ID is not configured.", {
-      code: "not_configured",
-      status: 503,
-    });
-  }
-  const response = await fetch(`${GITHUB_LOGIN_URL}/device/code`, {
-    body: new URLSearchParams({ client_id: clientId }),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    method: "POST",
-    signal,
-  });
-  const payload = await readJsonResponse(response);
-  if (!response.ok || payload.error) {
-    throw githubLoginError(payload, response.status);
-  }
-  return {
-    deviceCode: payload.device_code,
-    expiresIn: payload.expires_in,
-    interval: payload.interval,
-    userCode: payload.user_code,
-    verificationUri: payload.verification_uri,
-  };
-}
-
-export async function pollDeviceFlow(
-  clientId,
-  deviceCode,
-  signal,
-) {
-  const response = await fetch(`${GITHUB_LOGIN_URL}/oauth/access_token`, {
-    body: new URLSearchParams({
-      client_id: clientId,
-      device_code: deviceCode,
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    }),
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    method: "POST",
-    signal,
-  });
-  const payload = await readJsonResponse(response);
-
-  if (payload.error === "authorization_pending") {
-    return { status: "pending" };
-  }
-  if (payload.error === "slow_down") {
-    return { status: "slow_down" };
-  }
-  if (payload.error === "expired_token") {
-    return {
-      message: "The GitHub device code expired. Start the connection again.",
-      status: "expired",
-    };
-  }
-  if (payload.error === "access_denied") {
-    return {
-      message: "GitHub access was denied.",
-      status: "denied",
-    };
-  }
-  if (!response.ok || payload.error || !payload.access_token) {
-    return {
-      message:
-        payload.error_description ??
-        "GitHub could not complete the connection.",
-      status: "error",
-    };
-  }
-
-  return {
-    status: "token",
-    tokenSet: normalizeTokenSet(payload),
-  };
-}
-
 export async function exchangeAuthorizationCode(
   {
     clientId,
@@ -479,10 +397,10 @@ export async function refreshUserToken(
 ) {
   const body = {
     client_id: clientId,
+    client_secret: clientSecret,
     grant_type: "refresh_token",
     refresh_token: refreshToken,
   };
-  if (clientSecret) body.client_secret = clientSecret;
   const response = await fetch(`${GITHUB_LOGIN_URL}/oauth/access_token`, {
     body: new URLSearchParams(body),
     headers: {

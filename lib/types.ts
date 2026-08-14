@@ -103,32 +103,13 @@ export interface InboxPayload {
 }
 
 export interface ConnectionStatus {
-  authKind: "device" | "redirect" | null;
+  authKind: "redirect" | null;
   configured: boolean;
   connected: boolean;
   expiresAt: string | null;
-  mode: "demo" | "electron" | "web";
+  mode: "demo" | "web";
   viewer: PullRequestActor | null;
 }
-
-export interface DeviceFlowStart {
-  expiresIn: number;
-  interval: number;
-  userCode: string;
-  verificationUri: string;
-}
-
-export type DeviceFlowPoll =
-  | { status: "pending" | "slow_down" }
-  | {
-      status: "connected";
-      viewer: PullRequestActor;
-      expiresAt: string | null;
-    }
-  | {
-      status: "expired" | "denied" | "error";
-      message: string;
-    };
 
 export type ReviewEvent = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
 
@@ -152,13 +133,5 @@ export interface GitHubBridge {
     repository: string;
   }, signal?: AbortSignal): Promise<PullRequestDiff>;
   openExternal(url: string): Promise<void>;
-  pollDeviceFlow(): Promise<DeviceFlowPoll>;
-  startDeviceFlow(): Promise<DeviceFlowStart>;
   submitReview(input: SubmitReviewInput): Promise<{ submittedAt: string }>;
-}
-
-declare global {
-  interface Window {
-    hypePrs?: GitHubBridge;
-  }
 }
