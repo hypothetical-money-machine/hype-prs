@@ -36,3 +36,30 @@ test("web session keeps credentials server-side and preserves rotated refresh to
   // Only an explicit disconnect clears the session cookie.
   assert.match(disconnectRoute, /clearGitHubSession\(\)/);
 });
+
+test("session-backed routes answer a failed refresh with a structured error", async () => {
+  const names = ["inbox", "diff", "review", "status"];
+  const sources = await Promise.all(
+    names.map((name) =>
+      readFile(new URL(`app/api/github/${name}/route.ts`, root), "utf8"),
+    ),
+  );
+
+  for (const [index, source] of sources.entries()) {
+    // A transient token refresh failure must not escape as a bare 500, and
+    // must never be reported as "not connected".
+    assert.ok(
+      source.indexOf("try {") < source.indexOf("await readGitHubSession()"),
+      `${names[index]} must read the session inside its try block`,
+    );
+    assert.match(source, /return jsonError\(error\)/);
+  }
+
+  // A malformed review body is the client's error, not GitHub's.
+  const reviewRoute = sources[names.indexOf("review")];
+  const bodyParse = reviewRoute.slice(
+    reviewRoute.indexOf("await request.json()"),
+    reviewRoute.indexOf("submitReviewWithToken("),
+  );
+  assert.match(bodyParse, /catch[\s\S]*return invalidRequest\(\);/);
+});
