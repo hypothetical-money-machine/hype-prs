@@ -26,9 +26,9 @@ test("documents Contents access for commit-backed inbox fields", async () => {
 
 test("authenticated API requests identify Hype to GitHub", async () => {
   const originalFetch = globalThis.fetch;
-  let requestHeaders: Headers | null = null;
+  const calls: Array<{ init?: RequestInit }> = [];
   globalThis.fetch = async (_input, init) => {
-    requestHeaders = new Headers(init?.headers);
+    calls.push({ init });
     return Response.json({
       avatar_url: null,
       login: "morgan",
@@ -38,9 +38,10 @@ test("authenticated API requests identify Hype to GitHub", async () => {
 
   try {
     await getViewerWithToken("secret-token");
-    assert.equal(requestHeaders?.get("User-Agent"), "Hype-PRs/0.1.0");
+    const requestHeaders = new Headers(calls[0]?.init?.headers);
+    assert.equal(requestHeaders.get("User-Agent"), "Hype-PRs/0.1.0");
     assert.equal(
-      requestHeaders?.get("X-GitHub-Api-Version"),
+      requestHeaders.get("X-GitHub-Api-Version"),
       "2026-03-10",
     );
   } finally {
@@ -50,7 +51,7 @@ test("authenticated API requests identify Hype to GitHub", async () => {
 
 test("live inbox cards map every displayed PR field from GitHub", async () => {
   const originalFetch = globalThis.fetch;
-  let graphqlBody: { query?: string } | null = null;
+  const graphqlBodies: Array<{ query?: string }> = [];
   globalThis.fetch = async (input, init) => {
     if (String(input).endsWith("/user")) {
       return Response.json({
@@ -60,7 +61,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       });
     }
 
-    graphqlBody = JSON.parse(String(init?.body));
+    graphqlBodies.push(JSON.parse(String(init?.body)));
     const pullRequest = {
       additions: 58,
       author: {
@@ -139,8 +140,8 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
 
   try {
     const result = await loadInboxWithToken("secret-token");
-    assert.match(graphqlBody?.query ?? "", /comments\s*\{\s*totalCount/);
-    assert.match(graphqlBody?.query ?? "", /labels\(first: 100\)/);
+    assert.match(graphqlBodies[0]?.query ?? "", /comments\s*\{\s*totalCount/);
+    assert.match(graphqlBodies[0]?.query ?? "", /labels\(first: 100\)/);
     assert.deepEqual(result.pullRequests[0], {
       additions: 58,
       author: {
@@ -249,6 +250,43 @@ test("does not hide unexpected GraphQL errors behind a partial inbox", async () 
   }
 });
 
+test("degraded permission data drops a card with no repository", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({
+      data: {
+        assigned: { nodes: [] },
+        authored: { nodes: [{ id: "PR_partial", number: 9 }] },
+        reviewRequested: { nodes: [] },
+        reviewed: { nodes: [] },
+      },
+      errors: [
+        {
+          message: "Resource not accessible by integration",
+          path: ["authored", "nodes", 0, "repository"],
+        },
+      ],
+    });
+  };
+
+  try {
+    const result = await loadInboxWithToken("secret-token");
+    // The node survives GraphQL partial data but has no repository, so it can
+    // never load a diff. It is skipped; the permissions warning still lands.
+    assert.equal(result.pullRequests.length, 0);
+    assert.equal(result.warnings?.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("GitHub API errors retain safe upstream diagnostics", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
@@ -291,6 +329,47 @@ test("rejects unsafe repository coordinates before making a request", async () =
       error.code === "invalid_pull_request" &&
       error.status === 400,
   );
+});
+
+test("rejects a missing repository segment instead of requesting /undefined", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    return Response.json({});
+  };
+
+  try {
+    await assert.rejects(
+      loadPullDiffWithToken("token", {
+        number: 7,
+        owner: "acme",
+        repository: undefined,
+      } as never),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "invalid_pull_request" &&
+        error.status === 400,
+    );
+    await assert.rejects(
+      submitReviewWithToken("secret-token", {
+        baseCommitId: BASE_SHA,
+        body: "Looks good.",
+        commitId: CURRENT_HEAD,
+        event: "APPROVE",
+        number: 7,
+        owner: "acme",
+        repository: undefined,
+      } as never),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "invalid_pull_request" &&
+        error.status === 400,
+    );
+    assert.equal(requested, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("refuses to submit a review when the PR head changed", async () => {

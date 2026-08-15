@@ -450,7 +450,10 @@ function mapInboxPayload(data, viewer, warnings = []) {
 
   for (const [bucket, nodes] of buckets) {
     for (const node of nodes) {
-      if (!node?.id) continue;
+      // Degraded permission data can omit the repository. Such a card can
+      // never load a diff or accept a review, so drop it rather than render a
+      // card whose diff pane would spin forever; the warning still surfaces.
+      if (!node?.id || !node.repository?.nameWithOwner) continue;
       const existing = indexed.get(node.id) ?? { buckets: new Set(), node };
       existing.buckets.add(bucket);
       indexed.set(node.id, existing);
@@ -552,7 +555,7 @@ function mapPullRequest(node, buckets, viewerLogin) {
     mergeState: normalizeMergeState(node.mergeable),
     mentionsViewer: false,
     number: node.number,
-    repository: node.repository.nameWithOwner,
+    repository: node.repository?.nameWithOwner ?? "",
     reviewDecision: node.reviewDecision ?? null,
     reviewRequestedAt: null,
     teamReviewRequested:
@@ -747,6 +750,8 @@ function normalizeMergeState(state) {
 function validateRepositoryCoordinates({ owner, repository, number }) {
   const validSegment = /^[A-Za-z0-9_.-]+$/;
   if (
+    typeof owner !== "string" ||
+    typeof repository !== "string" ||
     !validSegment.test(owner) ||
     !validSegment.test(repository) ||
     !Number.isInteger(number) ||
