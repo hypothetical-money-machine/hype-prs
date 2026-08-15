@@ -8,6 +8,8 @@ import {
   FileX2,
   Folder,
   FolderOpen,
+  Minus,
+  Plus,
   Search,
   TriangleAlert,
 } from "lucide-react";
@@ -23,6 +25,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useDiffFontSize } from "./use-diff-font-size";
+import { getDiffLineHeightPt } from "@/lib/diff-font-size";
 import {
   buildFileTree,
   filterFileTree,
@@ -61,9 +65,17 @@ export function DiffWorkspace({
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
   const viewerPaneRef = useRef<HTMLElement>(null);
   const viewerSurfaceRef = useRef<HTMLDivElement>(null);
+  const {
+    canDecrease,
+    canIncrease,
+    decreaseFontSize,
+    fontSizePt,
+    increaseFontSize,
+  } = useDiffFontSize();
   const [fileQuery, setFileQuery] = useState("");
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [splitViewAvailable, setSplitViewAvailable] = useState(true);
+  const [mobileTab, setMobileTab] = useState<"diff" | "files">("diff");
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(
     new Set(),
   );
@@ -81,6 +93,7 @@ export function DiffWorkspace({
 
   function scrollToFile(filename: string) {
     setSelectedFilename(filename);
+    setMobileTab("diff");
   }
 
   useEffect(() => {
@@ -128,7 +141,33 @@ export function DiffWorkspace({
     <div
       className="diff-workspace"
       data-file-browser-collapsed={fileBrowserCollapsed}
+      data-font-size-pt={fontSizePt}
+      data-mobile-tab={mobileTab}
     >
+      <div
+        className="diff-mobile-tabs"
+        role="tablist"
+        aria-label="Diff workspace views"
+      >
+        <button
+          aria-selected={mobileTab === "diff"}
+          className="diff-mobile-tab"
+          onClick={() => setMobileTab("diff")}
+          role="tab"
+          type="button"
+        >
+          Diff View
+        </button>
+        <button
+          aria-selected={mobileTab === "files"}
+          className="diff-mobile-tab"
+          onClick={() => setMobileTab("files")}
+          role="tab"
+          type="button"
+        >
+          Files ({diff.files.length})
+        </button>
+      </div>
       <aside
         aria-label="Changed files"
         className="file-browser"
@@ -183,27 +222,52 @@ export function DiffWorkspace({
         ref={viewerPaneRef}
       >
         <div className="diff-toolbar">
-          <div className="segmented-control" aria-label="Diff layout">
-            <button
-              aria-pressed={renderedLayout === "split"}
-              disabled={!splitViewAvailable}
-              onClick={() => onLayoutChange("split")}
-              title={
-                splitViewAvailable
-                  ? "Show the diff side by side"
-                  : "Split view is available when the diff pane is wider"
-              }
-              type="button"
-            >
-              Split
-            </button>
-            <button
-              aria-pressed={renderedLayout === "unified"}
-              onClick={() => onLayoutChange("unified")}
-              type="button"
-            >
-              Unified
-            </button>
+          <div className="diff-toolbar-controls">
+            <div className="segmented-control" aria-label="Diff layout">
+              <button
+                aria-pressed={renderedLayout === "split"}
+                disabled={!splitViewAvailable}
+                onClick={() => onLayoutChange("split")}
+                title={
+                  splitViewAvailable
+                    ? "Show the diff side by side"
+                    : "Split view is available when the diff pane is wider"
+                }
+                type="button"
+              >
+                Split
+              </button>
+              <button
+                aria-pressed={renderedLayout === "unified"}
+                onClick={() => onLayoutChange("unified")}
+                type="button"
+              >
+                Unified
+              </button>
+            </div>
+            <div className="point-picker" aria-label="Text size" role="group">
+              <button
+                aria-label="Decrease text size"
+                disabled={!canDecrease}
+                onClick={decreaseFontSize}
+                title={`Decrease text size (current: ${fontSizePt}pt)`}
+                type="button"
+              >
+                <Minus aria-hidden="true" size={13} />
+              </button>
+              <span className="point-picker-value" aria-live="polite">
+                {fontSizePt} pt
+              </span>
+              <button
+                aria-label="Increase text size"
+                disabled={!canIncrease}
+                onClick={increaseFontSize}
+                title={`Increase text size (current: ${fontSizePt}pt)`}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={13} />
+              </button>
+            </div>
           </div>
           <span className="diff-engine">
             Rendered with <strong>Pierre Diffs</strong>
@@ -256,8 +320,8 @@ export function DiffWorkspace({
               }}
               style={
                 {
-                  "--diffs-font-size": "14px",
-                  "--diffs-line-height": "22px",
+                  "--diffs-font-size": `${fontSizePt}pt`,
+                  "--diffs-line-height": `${getDiffLineHeightPt(fontSizePt)}pt`,
                   height: "100%",
                   overflow: "auto",
                 } as CSSProperties

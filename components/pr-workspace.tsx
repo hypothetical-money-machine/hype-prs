@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   CircleAlert,
   CircleDot,
   Clock3,
@@ -126,6 +127,7 @@ export function PrWorkspace({
   }>({ diff: EMPTY_DIFF, inboxSyncedAt: "", pullRequestId: "" });
   const [diffLayout, setDiffLayout] = useState<DiffLayout>("split");
   const [leftColumnsCollapsed, setLeftColumnsCollapsed] = useState(false);
+  const [mobilePane, setMobilePane] = useState<"queue" | "detail">("queue");
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -549,6 +551,7 @@ export function PrWorkspace({
       <div
         className="app-grid"
         data-left-columns-collapsed={leftColumnsCollapsed}
+        data-mobile-pane={mobilePane}
       >
         <aside
           className="sidebar"
@@ -698,6 +701,28 @@ export function PrWorkspace({
             </button>
           </div>
 
+          <div
+            className="mobile-view-nav"
+            role="tablist"
+            aria-label="Quick views"
+          >
+            {viewDefinitions.map((view) => (
+              <button
+                key={view.id}
+                aria-selected={activeView === view.id}
+                className="mobile-view-pill"
+                onClick={() => selectView(view.id)}
+                role="tab"
+                type="button"
+              >
+                <span>{view.shortLabel}</span>
+                <span className="mobile-view-count">
+                  {countForView(inboxData.pullRequests, view.id, viewNow)}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <div className="queue-controls">
             <label className="queue-search">
               <Search aria-hidden="true" size={15} />
@@ -787,7 +812,10 @@ export function PrWorkspace({
                     <PullRequestRow
                       active={selectedPullRequest?.id === pullRequest.id}
                       now={viewNow}
-                      onClick={() => setSelectedId(pullRequest.id)}
+                      onClick={() => {
+                        setSelectedId(pullRequest.id);
+                        setMobilePane("detail");
+                      }}
                       pullRequest={pullRequest}
                     />
                   </Fragment>
@@ -823,6 +851,7 @@ export function PrWorkspace({
             <>
               <PullRequestHeader
                 now={viewNow}
+                onBackToQueue={() => setMobilePane("queue")}
                 onOpenInGitHub={() => void openSelectedInGitHub()}
                 onReview={() => setReviewOpen(true)}
                 pullRequest={selectedPullRequest}
@@ -1295,6 +1324,7 @@ function PullRequestRow({
 
 function PullRequestHeader({
   now,
+  onBackToQueue,
   onOpenInGitHub,
   onReview,
   pullRequest,
@@ -1302,6 +1332,7 @@ function PullRequestHeader({
   usingDemo,
 }: {
   now: Date;
+  onBackToQueue?(): void;
   onOpenInGitHub(): void;
   onReview(): void;
   pullRequest: PullRequestSummary;
@@ -1310,12 +1341,25 @@ function PullRequestHeader({
 }) {
   return (
     <header className="detail-header">
-      <div className="detail-breadcrumb">
-        <span>{pullRequest.repository}</span>
-        <span>/</span>
-        <span>pull</span>
-        <span>/</span>
-        <strong>{pullRequest.number}</strong>
+      <div className="detail-top-bar">
+        {onBackToQueue && (
+          <button
+            aria-label="Back to queue"
+            className="mobile-back-button"
+            onClick={onBackToQueue}
+            type="button"
+          >
+            <ChevronLeft aria-hidden="true" size={16} />
+            <span>Queue</span>
+          </button>
+        )}
+        <div className="detail-breadcrumb">
+          <span>{pullRequest.repository}</span>
+          <span>/</span>
+          <span>pull</span>
+          <span>/</span>
+          <strong>#{pullRequest.number}</strong>
+        </div>
       </div>
       <div className="detail-heading">
         <div>
