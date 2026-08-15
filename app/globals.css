@@ -1697,6 +1697,27 @@ textarea:focus-visible {
   color: var(--text-soft);
 }
 
+.hero-actions .repo-link {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--accent);
+  display: inline-flex;
+  font-size: 12.5px;
+  font-weight: 650;
+  gap: 6px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 10px;
+  text-decoration: none;
+}
+
+.hero-actions .repo-link:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
 .secondary-button:hover {
   background: var(--wash-strong);
   color: var(--text);

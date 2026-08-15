@@ -1,6 +1,7 @@
 {
   "name": "hype-prs",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "An action-first GitHub pull request companion.",
   "private": true,
   "engines": {

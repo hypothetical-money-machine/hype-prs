@@ -17,6 +17,7 @@ import {
   FileCode2,
   FolderGit2,
   GitBranch,
+  GitFork,
   GitPullRequest,
   History,
   Inbox,
@@ -976,7 +977,7 @@ const MARKETING_FEATURES = [
     title: "Keyboard-first",
   },
   {
-    body: "Works in the browser. Credentials stay encrypted on the server, and Hype PRs never bypasses your organization policy.",
+    body: "Works in the browser. Your GitHub token is encrypted with a server-only key and only ever used on the server to make GitHub requests.",
     icon: ShieldCheck,
     title: "Private by design",
   },
@@ -1077,11 +1078,19 @@ function LaunchLogin({
                 <Code2 aria-hidden="true" size={15} />
                 Explore preview mode
               </button>
+              <a
+                className="repo-link"
+                href="https://github.com/hypothetical-money-machine/hype-prs"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <GitFork aria-hidden="true" size={15} />
+                See the code (and steal it legally!)
+              </a>
             </div>
 
             <p className="hero-sub">
-              No account needed to look around · Works in your browser · Never
-              bypasses your organization policy
+              No account needed to look around · Works in your browser
             </p>
           </div>
 
