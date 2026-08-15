@@ -45,16 +45,16 @@ export async function generateMetadata(): Promise<Metadata> {
         },
       ],
       siteName: "Hype PRs",
-      title: "Hype — the pull request pulse",
+      title: "Hype PRs — the pull request pulse",
       type: "website",
     },
-    title: "Hype — the pull request pulse",
+    title: "Hype PRs — the pull request pulse",
     twitter: {
       card: "summary_large_image",
       description:
         "See what needs you now. Review pull requests across repositories from one action-first queue.",
       images: [new URL("/og.png", origin).toString()],
-      title: "Hype — the pull request pulse",
+      title: "Hype PRs — the pull request pulse",
     },
   };
 }

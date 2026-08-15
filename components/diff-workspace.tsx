@@ -357,7 +357,7 @@ function DiffFallback({
   return (
     <div className="diff-fallback">
       <TriangleAlert aria-hidden="true" size={28} />
-      <strong>Diff unavailable in Hype</strong>
+      <strong>Diff unavailable in Hype PRs</strong>
       <p>{reason}</p>
       <button className="secondary-button" onClick={onOpenInGitHub} type="button">
         Open this diff on GitHub

@@ -559,7 +559,7 @@ export function PrWorkspace({
               H
             </span>
             <span>
-              <strong>Hype</strong>
+              <strong>Hype PRs</strong>
               <small>Pull request pulse</small>
             </span>
           </div>
@@ -604,7 +604,7 @@ export function PrWorkspace({
           <div className="policy-note">
             <ShieldCheck aria-hidden="true" size={16} />
             <p>
-              Hype is another GitHub client. Organization and managed-device
+              Hype PRs is another GitHub client. Organization and managed-device
               policies still apply.
             </p>
           </div>
@@ -965,7 +965,7 @@ const MARKETING_FEATURES = [
     title: "Files and diffs in place",
   },
   {
-    body: "Comment, approve, or request changes with a summary. Hype re-checks the exact commits before it submits, so reviews land safe.",
+    body: "Comment, approve, or request changes with a summary. Hype PRs re-checks the exact commits before it submits, so reviews land safe.",
     icon: GitPullRequest,
     title: "Formal reviews",
   },
@@ -975,7 +975,7 @@ const MARKETING_FEATURES = [
     title: "Keyboard-first",
   },
   {
-    body: "Works in the browser. Credentials stay encrypted on the server, and Hype never bypasses your organization policy.",
+    body: "Works in the browser. Credentials stay encrypted on the server, and Hype PRs never bypasses your organization policy.",
     icon: ShieldCheck,
     title: "Private by design",
   },
@@ -984,18 +984,18 @@ const MARKETING_FEATURES = [
 const MARKETING_FAQ = [
   {
     answer:
-      "Hype is an action-first pull request inbox. Instead of an alphabetical repository list, it shows a queue of the pull requests that need you, explains why each one does, and lets you open the files, read the diff, and submit a review without switching tools.",
-    question: "What exactly is Hype?",
+      "Hype PRs is an action-first pull request inbox. Instead of an alphabetical repository list, it shows a queue of the pull requests that need you, explains why each one does, and lets you open the files, read the diff, and submit a review without switching tools.",
+    question: "What exactly is Hype PRs?",
   },
   {
     answer:
-      "Connect with GitHub and Hype finds your open pull requests from four angles: ones you authored, ones assigned to you, ones requesting your review, and ones you have reviewed. It deduplicates the results into a single queue.",
+      "Connect with GitHub and Hype PRs finds your open pull requests from four angles: ones you authored, ones assigned to you, ones requesting your review, and ones you have reviewed. It deduplicates the results into a single queue.",
     question: "Where do the pull requests in my inbox come from?",
   },
   {
     answer:
-      "Hype connects through an approved GitHub App, not a personal access token. Requested access is read-focused — pull requests, metadata, checks, and review submission — and your normal organization approval, SSO, and repository permissions still apply.",
-    question: "What does Hype need access to do?",
+      "Hype PRs connects through an approved GitHub App, not a personal access token. Requested access is read-focused — pull requests, metadata, checks, and review submission — and your normal organization approval, SSO, and repository permissions still apply.",
+    question: "What does Hype PRs need access to do?",
   },
   {
     answer:
@@ -1004,8 +1004,8 @@ const MARKETING_FAQ = [
   },
   {
     answer:
-      "A selected diff is accepted only while its base and head revisions stay stable. When a diff is oversized, binary, too many files, or cannot be parsed safely, Hype shows a clear degraded state with an Open in GitHub fallback instead of a blank pane.",
-    question: "How does Hype handle large or unusual diffs?",
+      "A selected diff is accepted only while its base and head revisions stay stable. When a diff is oversized, binary, too many files, or cannot be parsed safely, Hype PRs shows a clear degraded state with an Open in GitHub fallback instead of a blank pane.",
+    question: "How does Hype PRs handle large or unusual diffs?",
   },
   {
     answer:
@@ -1039,7 +1039,7 @@ function LaunchLogin({
             <span className="eyebrow">Your pull request pulse</span>
             <h1 id="launch-title">See what needs you now.</h1>
             <p>
-              Hype turns your GitHub pull requests — across every repository —
+              Hype PRs turns your GitHub pull requests — across every repository —
               into one action-first queue. It explains why each one needs
               attention, opens the files and diff for you, and lets you submit a
               formal review without leaving the app.
@@ -1090,7 +1090,7 @@ function LaunchLogin({
                 <span className="mock-dot red" />
                 <span className="mock-dot amber" />
                 <span className="mock-dot green" />
-                <span className="mock-title">Hype — action queue</span>
+                <span className="mock-title">Hype PRs — action queue</span>
               </div>
               <div className="mock-body">
                 <div className="mock-eyebrow">Your action queue</div>
@@ -1131,7 +1131,7 @@ function LaunchLogin({
 
         <section className="marketing-section" aria-labelledby="marketing-features-title">
           <div className="marketing-head">
-            <span className="eyebrow">Why Hype</span>
+            <span className="eyebrow">Why Hype PRs</span>
             <h2 id="marketing-features-title">
               Built around the moment you triage
             </h2>
@@ -1221,7 +1221,7 @@ function LaunchLogin({
         <footer className="marketing-footer">
           <span>
             <ShieldCheck aria-hidden="true" size={14} />
-            Hype is another GitHub client. Organization approvals, SSO, and
+            Hype PRs is another GitHub client. Organization approvals, SSO, and
             managed-device policies still apply.
           </span>
         </footer>
@@ -1428,7 +1428,7 @@ function ConnectionDialog({
         ) : (
           <>
             <p>
-              Hype uses a GitHub App, so access remains limited by your account,
+              Hype PRs uses a GitHub App, so access remains limited by your account,
               App installation, organization approval, and SSO policy.
             </p>
             <ul className="permission-list">
