@@ -24,7 +24,7 @@ test("documents Contents access for commit-backed inbox fields", async () => {
   assert.match(readme, /- Contents: read/);
 });
 
-test("authenticated API requests identify Hype to GitHub", async () => {
+test("authenticated API requests identify Hype PRs to GitHub", async () => {
   const originalFetch = globalThis.fetch;
   let requestHeaders: Headers | null = null;
   globalThis.fetch = async (_input, init) => {
