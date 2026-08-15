@@ -2606,8 +2606,13 @@ textarea:focus-visible {
   text-align: left;
 }
 
-.review-option:hover {
+.review-option:hover:not(:disabled) {
   border-color: var(--border-strong);
+}
+
+.review-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .review-option[data-active="true"] {

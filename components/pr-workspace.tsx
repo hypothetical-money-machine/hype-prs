@@ -1488,7 +1488,10 @@ function ReviewDialog({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const requiresBody = event !== "APPROVE";
-  const valid = !requiresBody || Boolean(body.trim());
+  // GitHub rejects a self-approval at submit time, so never offer the option.
+  const authored = pullRequest.viewerRelationship === "AUTHOR";
+  const blocked = (option: ReviewEvent) => authored && option === "APPROVE";
+  const valid = (!requiresBody || Boolean(body.trim())) && !blocked(event);
 
   async function submit() {
     setSubmitting(true);
@@ -1530,6 +1533,7 @@ function ReviewDialog({
                 aria-checked={event === option}
                 className="review-option"
                 data-active={event === option}
+                disabled={blocked(option)}
                 key={option}
                 onClick={() => {
                   setEvent(option);
@@ -1541,7 +1545,11 @@ function ReviewDialog({
                 {reviewOptionIcon(option)}
                 <span>
                   <strong>{reviewEventLabel(option)}</strong>
-                  <small>{reviewEventDescription(option)}</small>
+                  <small>
+                    {blocked(option)
+                      ? "You cannot approve your own pull request"
+                      : reviewEventDescription(option)}
+                  </small>
                 </span>
               </button>
             ),
