@@ -7,18 +7,22 @@ import {
 
 const CALLBACK_ENV_KEYS = ["GITHUB_CALLBACK_URL", "NODE_ENV"] as const;
 
+// `NODE_ENV` is declared read-only on ProcessEnv, but these tests need to move
+// it around, so write through a mutable view of the same object.
+const env = process.env as Record<string, string | undefined>;
+
 async function withCallbackEnvironment(
   values: Partial<Record<(typeof CALLBACK_ENV_KEYS)[number], string>>,
   run: () => void | Promise<void>,
 ) {
   const original = Object.fromEntries(
-    CALLBACK_ENV_KEYS.map((key) => [key, process.env[key]]),
+    CALLBACK_ENV_KEYS.map((key) => [key, env[key]]),
   );
 
   for (const key of CALLBACK_ENV_KEYS) {
     const value = values[key];
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+    if (value === undefined) delete env[key];
+    else env[key] = value;
   }
 
   try {
@@ -26,8 +30,8 @@ async function withCallbackEnvironment(
   } finally {
     for (const key of CALLBACK_ENV_KEYS) {
       const value = original[key];
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) delete env[key];
+      else env[key] = value;
     }
   }
 }

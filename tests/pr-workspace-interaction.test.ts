@@ -33,7 +33,8 @@ test("workspace panels collapse from the viewer boundary and restore context", a
     const queueSearch = await screen.findByRole<HTMLInputElement>("textbox", {
       name: /Search pull requests/,
     });
-    const fileSearch = screen.getByRole<HTMLInputElement>("textbox", {
+    // The changed-file filter lives in the lazily loaded diff workspace.
+    const fileSearch = await screen.findByRole<HTMLInputElement>("textbox", {
       name: "Filter changed files",
     });
     fireEvent.change(queueSearch, { target: { value: "keyboard" } });
@@ -241,8 +242,13 @@ function installDom(): JSDOM {
     dom.window.clearTimeout(handle);
   originalGlobals = new Map();
 
+  // The diff workspace loads lazily, so Pierre's custom elements now register
+  // during render rather than at module load. They need `customElements` and a
+  // constructable `CSSStyleSheet` on the global.
   const globals = {
     document: dom.window.document,
+    CSSStyleSheet: dom.window.CSSStyleSheet,
+    customElements: dom.window.customElements,
     Element: dom.window.Element,
     Event: dom.window.Event,
     getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
