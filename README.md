@@ -83,6 +83,10 @@ GITHUB_CALLBACK_URL=http://localhost:3000/api/github/auth/callback
 as an exact HTTPS URL in production. `GITHUB_APP_CLIENT_SECRET` and
 `SESSION_SECRET` must never be exposed to browser code or committed.
 
+Set `SITE_URL` to the canonical public origin (for example
+`https://hype-prs.example.com`) in production. Page metadata falls back to the
+request headers when it is unset, and those headers are client-supplied.
+
 Restart `npm run dev`, choose **Connect GitHub**, and complete GitHub's normal
 authorization and organization approval flow.
 
