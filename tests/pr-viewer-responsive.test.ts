@@ -248,8 +248,13 @@ function installDom() {
   dom.window.cancelAnimationFrame = (handle) =>
     dom.window.clearTimeout(handle);
 
+  // The diff workspace loads lazily, so Pierre's custom elements now register
+  // during render rather than at module load. They need `customElements` and a
+  // constructable `CSSStyleSheet` on the global.
   const globals = {
     document: dom.window.document,
+    CSSStyleSheet: dom.window.CSSStyleSheet,
+    customElements: dom.window.customElements,
     CustomEvent: dom.window.CustomEvent,
     DOMParser: dom.window.DOMParser,
     Element: dom.window.Element,

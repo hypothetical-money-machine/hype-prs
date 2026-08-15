@@ -42,13 +42,15 @@ import {
 } from "lucide-react";
 import {
   Fragment,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { DiffWorkspace, type DiffLayout } from "./diff-workspace";
+import type { DiffLayout } from "./diff-workspace";
 import { ThemeToggle, useThemePreference } from "./theme-toggle";
 import { createDemoInbox, demoDiffs } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
@@ -71,6 +73,15 @@ import type {
   ReviewEvent,
 } from "@/lib/types";
 import type { ThemePreference } from "@/lib/theme";
+
+// The diff workspace pulls in Pierre Diffs and the Shiki highlighter, which is
+// by far the heaviest thing the client loads. Nobody on the marketing or login
+// screen needs it, so it stays out of the entry chunk until a pull request is
+// actually selected.
+const DiffWorkspace = lazy(async () => {
+  const loaded = await import("./diff-workspace");
+  return { default: loaded.DiffWorkspace };
+});
 
 const EMPTY_DIFF: PullRequestDiff = {
   baseSha: "",
@@ -858,16 +869,24 @@ export function PrWorkspace({
                 reviewReady={reviewReady}
                 usingDemo={usingDemo}
               />
-              <DiffWorkspace
-                key={selectedPullRequest.id}
-                diff={displayedDiff}
-                fileBrowserCollapsed={leftColumnsCollapsed}
-                layout={diffLayout}
-                loading={diffLoading}
-                onLayoutChange={setDiffLayout}
-                onOpenInGitHub={() => void openSelectedInGitHub()}
-                themePreference={themePreference ?? "system"}
-              />
+              <Suspense
+                fallback={
+                  <DiffWorkspaceFallback
+                    fileBrowserCollapsed={leftColumnsCollapsed}
+                  />
+                }
+              >
+                <DiffWorkspace
+                  key={selectedPullRequest.id}
+                  diff={displayedDiff}
+                  fileBrowserCollapsed={leftColumnsCollapsed}
+                  layout={diffLayout}
+                  loading={diffLoading}
+                  onLayoutChange={setDiffLayout}
+                  onOpenInGitHub={() => void openSelectedInGitHub()}
+                  themePreference={themePreference ?? "system"}
+                />
+              </Suspense>
             </>
           ) : (
             <div className="empty-detail">
@@ -961,6 +980,34 @@ function PanelVisibilityToggle({
         <PanelLeftClose aria-hidden="true" size={16} />
       )}
     </button>
+  );
+}
+
+function DiffWorkspaceFallback({
+  fileBrowserCollapsed,
+}: {
+  fileBrowserCollapsed: boolean;
+}) {
+  return (
+    <div
+      className="diff-workspace"
+      data-file-browser-collapsed={fileBrowserCollapsed}
+    >
+      <aside
+        aria-label="Changed files"
+        className="file-browser"
+        hidden={fileBrowserCollapsed}
+      />
+      <div className="diff-canvas">
+        <div className="diff-loading" role="status">
+          <span />
+          <span />
+          <span />
+          <span />
+          <p>Loading changed files…</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
