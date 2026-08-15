@@ -167,6 +167,25 @@ textarea:focus-visible {
   z-index: 20;
 }
 
+@media (max-width: 640px) {
+  .window-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 14px;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .traffic-light-space {
+    display: none;
+  }
+
+  .window-title {
+    font-size: 11.5px;
+    justify-content: flex-start;
+  }
+}
+
 .traffic-light-space {
   height: 12px;
   width: 60px;
@@ -327,8 +346,12 @@ textarea:focus-visible {
   display: none;
 }
 
-.launch-shell {
+.launch-shell,
+.app-shell.launch-shell {
+  height: 100dvh;
+  min-height: 0;
   min-width: 0;
+  width: 100%;
 }
 
 .launch-stage {
@@ -339,13 +362,14 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   height: calc(100% - 42px);
-  min-height: 540px;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 24px;
+  padding: 0 24px 32px;
   position: relative;
   scrollbar-color: var(--scroll-thumb) transparent;
   scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .launch-glow {
@@ -559,17 +583,6 @@ textarea:focus-visible {
   gap: 36px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
   padding: clamp(28px, 5.5vh, 64px) 0 34px;
-}
-
-@media (max-width: 900px) {
-  .marketing-hero {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .mock-window {
-    max-width: 460px;
-    transform: none;
-  }
 }
 
 .marketing-copy .launch-brand {
@@ -924,6 +937,267 @@ textarea:focus-visible {
 
 .marketing-footer svg {
   flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .marketing-hero {
+    gap: 32px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: clamp(22px, 4.5vh, 48px) 0 28px;
+  }
+
+  .mock-window {
+    max-width: 520px;
+    transform: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .marketing-mock {
+    perspective: none;
+    width: 100%;
+  }
+
+  .mock-window {
+    border-radius: 14px;
+    max-width: 100%;
+    min-width: 0;
+    transform: none;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .launch-stage {
+    padding: 0 16px max(32px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  .launch-glow {
+    top: 2%;
+    width: 220px;
+    height: 140px;
+  }
+
+  .marketing-hero {
+    gap: 22px;
+    padding: clamp(16px, 3vh, 32px) 0 20px;
+  }
+
+  .marketing-copy .launch-brand {
+    font-size: 20px;
+    height: 44px;
+    margin-bottom: 14px;
+    width: 44px;
+  }
+
+  .marketing-hero h1 {
+    font-size: clamp(28px, 7.2vw, 38px);
+    letter-spacing: -0.04em;
+    line-height: 1.08;
+    max-width: 100%;
+  }
+
+  .marketing-hero .marketing-copy > p {
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 12px 0 20px;
+    max-width: 100%;
+  }
+
+  .marketing-section {
+    padding: 14px 0;
+  }
+
+  .marketing-head h2 {
+    font-size: clamp(20px, 5.5vw, 25px);
+  }
+
+  .marketing-head p {
+    font-size: 13px;
+    line-height: 1.55;
+    margin-top: 6px;
+  }
+
+  .feature-grid {
+    gap: 10px;
+    grid-template-columns: 1fr;
+    margin-top: 14px;
+  }
+
+  .feature-card {
+    border-radius: 12px;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .feature-icon {
+    border-radius: 8px;
+    height: 34px;
+    width: 34px;
+  }
+
+  .feature-card h3 {
+    font-size: 13.5px;
+  }
+
+  .feature-card p {
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+
+  .faq-list {
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .faq-item {
+    border-radius: 10px;
+  }
+
+  .faq-item summary {
+    font-size: 13.5px;
+    min-height: 48px;
+    padding: 12px 14px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .faq-item p {
+    font-size: 12.5px;
+    line-height: 1.55;
+    padding: 12px 14px;
+  }
+
+  .marketing-cta {
+    border-radius: 14px;
+    margin: 16px 0 6px;
+    padding: 18px 14px;
+  }
+
+  .marketing-cta h2 {
+    font-size: clamp(19px, 5vw, 24px);
+  }
+
+  .marketing-cta p {
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 6px 0 16px;
+  }
+
+  .marketing-footer {
+    font-size: 11px;
+    padding: 16px 0 max(24px, env(safe-area-inset-bottom));
+  }
+
+  .marketing-footer span {
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.45;
+    text-align: left;
+  }
+}
+
+@media (max-width: 540px) {
+  .hero-actions {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .hero-actions .launch-sign-in,
+  .hero-actions .primary-button,
+  .hero-actions .secondary-button {
+    font-size: 13.5px;
+    justify-content: center;
+    min-height: 48px;
+    width: 100%;
+  }
+
+  .hero-actions .repo-link {
+    font-size: 12px;
+    min-height: 40px;
+    padding: 6px 10px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .hero-sub {
+    font-size: 11.5px;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  .launch-card {
+    border-radius: 14px;
+    padding: 24px 18px;
+    width: min(520px, 100%);
+  }
+
+  .launch-card h1 {
+    font-size: 24px;
+  }
+
+  .launch-checking {
+    min-height: 220px;
+  }
+
+  .launch-checking h1 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mock-bar {
+    padding: 8px 10px;
+  }
+
+  .mock-title {
+    font-size: 10px;
+  }
+
+  .mock-body {
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .mock-row {
+    border-radius: 8px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .mock-repo {
+    font-size: 9.5px;
+    padding: 2px 5px;
+  }
+
+  .mock-row strong {
+    font-size: 12px;
+  }
+
+  .mock-row small {
+    font-size: 10px;
+    gap: 4px;
+  }
+
+  .mock-tag {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .mock-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .mock-repo {
+    align-self: flex-start;
+  }
 }
 
 .sidebar {
@@ -1674,6 +1948,12 @@ textarea:focus-visible {
   justify-content: center;
   min-height: 40px;
   padding: 0 16px;
+  touch-action: manipulation;
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
+  transform: scale(0.985);
 }
 
 .primary-button {
@@ -1711,11 +1991,17 @@ textarea:focus-visible {
   min-height: 40px;
   padding: 0 10px;
   text-decoration: none;
+  touch-action: manipulation;
 }
 
 .hero-actions .repo-link:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.hero-actions .repo-link:active {
+  opacity: 0.8;
+  transform: scale(0.985);
 }
 
 .secondary-button:hover {
@@ -2550,7 +2836,7 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1020px) {
-  .app-shell {
+  .app-shell:not(.launch-shell) {
     min-width: 760px;
   }
 
