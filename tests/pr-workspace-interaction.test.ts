@@ -4,7 +4,9 @@ import { createElement } from "react";
 import type { ComponentType } from "react";
 import { JSDOM } from "jsdom";
 import { PrWorkspace } from "../components/pr-workspace";
-import { demoInbox } from "../lib/demo-data";
+import { createDemoInbox } from "../lib/demo-data";
+
+const demoInbox = createDemoInbox();
 
 test("workspace panels collapse from the viewer boundary and restore context", async () => {
   const dom = installDom();

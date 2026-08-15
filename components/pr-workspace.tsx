@@ -48,7 +48,7 @@ import {
 } from "react";
 import { DiffWorkspace, type DiffLayout } from "./diff-workspace";
 import { ThemeToggle, useThemePreference } from "./theme-toggle";
-import { demoDiffs, demoInbox } from "@/lib/demo-data";
+import { createDemoInbox, demoDiffs } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
 import {
   countForView,
@@ -97,7 +97,7 @@ const INITIAL_CONNECTION: ConnectionStatus = {
 };
 
 export function PrWorkspace({
-  initialDemoInbox = demoInbox,
+  initialDemoInbox = createDemoInbox(),
   initialNow = Date.parse(initialDemoInbox.syncedAt),
 }: {
   initialDemoInbox?: InboxPayload;
