@@ -1,6 +1,6 @@
 import { PrWorkspace } from "@/components/pr-workspace";
-import { demoInbox } from "@/lib/demo-data";
+import { createDemoInbox } from "@/lib/demo-data";
 
 export default function Home() {
-  return <PrWorkspace initialDemoInbox={demoInbox} />;
+  return <PrWorkspace initialDemoInbox={createDemoInbox()} />;
 }

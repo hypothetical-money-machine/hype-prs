@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import Script from "next/script";
+import { resolveSiteOrigin } from "../lib/server/site-origin";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,13 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const forwardedHost = requestHeaders.get("x-forwarded-host");
-  const host = forwardedHost ?? requestHeaders.get("host") ?? "localhost:3000";
-  const forwardedProtocol = requestHeaders.get("x-forwarded-proto");
-  const protocol =
-    forwardedProtocol ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = `${protocol}://${host}`;
+  const origin = resolveSiteOrigin(await headers());
 
   return {
     applicationName: "Hype PRs",

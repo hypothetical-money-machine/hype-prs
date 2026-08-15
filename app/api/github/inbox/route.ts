@@ -5,10 +5,10 @@ import { jsonError, notConnected } from "@/lib/server/responses";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const session = await readGitHubSession();
-  if (!session) return notConnected();
-
   try {
+    const session = await readGitHubSession();
+    if (!session) return notConnected();
+
     return Response.json(
       await loadInboxWithToken(session.tokenSet.accessToken, request.signal),
     );

@@ -78,6 +78,10 @@ export async function readGitHubSession(): Promise<GitHubSession | null> {
       // losing response, because it could overwrite that valid session.
       return null;
     }
+    // A transient refresh failure (GitHub 5xx, network error) must not read as
+    // "disconnected". The current access token is still valid for up to
+    // REFRESH_EARLY_MS, so serve it and retry the refresh on the next request.
+    if (expiresAt > Date.now()) return session;
     throw error;
   }
 }

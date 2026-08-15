@@ -31,3 +31,15 @@ export function invalidOrigin(): Response {
     { status: 403 },
   );
 }
+
+export function invalidRequest(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "invalid_request",
+        message: "The request body was not valid JSON.",
+      },
+    },
+    { status: 400 },
+  );
+}
