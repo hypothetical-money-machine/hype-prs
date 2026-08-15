@@ -317,6 +317,57 @@ test("GitHub API errors retain safe upstream diagnostics", async () => {
   }
 });
 
+test("a rejected review explains why instead of saying Unprocessable Entity", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/pulls/30")) {
+      return Response.json({
+        base: { sha: BASE_SHA },
+        head: { sha: CURRENT_HEAD },
+      });
+    }
+    // GitHub answers a self-approval with a bare top-level message; the
+    // actionable reason only appears in `errors`.
+    return Response.json(
+      {
+        documentation_url: "https://docs.github.com/rest/pulls/reviews",
+        errors: [
+          {
+            code: "custom",
+            field: "user_id",
+            message: "Can not approve your own pull request",
+            resource: "PullRequestReview",
+          },
+        ],
+        message: "Unprocessable Entity",
+      },
+      { status: 422 },
+    );
+  };
+
+  try {
+    await assert.rejects(
+      submitReviewWithToken("secret-token", {
+        baseCommitId: BASE_SHA,
+        body: "LGTM",
+        commitId: CURRENT_HEAD,
+        event: "APPROVE",
+        number: 30,
+        owner: "hypothetical-money-machine",
+        repository: "hypecreds",
+      }),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.status === 422 &&
+        error.message ===
+          "Unprocessable Entity: Can not approve your own pull request",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("rejects unsafe repository coordinates before making a request", async () => {
   await assert.rejects(
     loadPullDiffWithToken("token", {

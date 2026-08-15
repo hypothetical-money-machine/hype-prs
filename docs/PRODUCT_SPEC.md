@@ -190,7 +190,9 @@ formal review events:
 - Approve;
 - Request changes.
 
-Comment and Request changes require a non-empty summary in the UI. Submission
+Comment and Request changes require a non-empty summary in the UI. Approve is
+unavailable on pull requests the viewer authored, because GitHub rejects a
+self-approval. Submission
 must include the displayed full base and head SHAs, re-checks both immediately
 before mutation, and requires a confirmation step. A successful live
 submission refreshes the inbox and reclassifies the pull request.

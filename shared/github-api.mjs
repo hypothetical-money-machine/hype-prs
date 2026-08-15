@@ -638,6 +638,33 @@ async function readTextWithLimit(response, maxBytes) {
   return { text: new TextDecoder().decode(bytes), truncated: false };
 }
 
+function describeGitHubErrors(errors) {
+  if (!Array.isArray(errors)) return null;
+  const described = [];
+  for (const entry of errors) {
+    if (typeof entry === "string") {
+      described.push(entry);
+      continue;
+    }
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.message === "string" && entry.message.trim()) {
+      described.push(entry.message.trim());
+      continue;
+    }
+    const field = typeof entry.field === "string" ? entry.field : null;
+    if (!field) continue;
+    if (entry.code === "missing_field" || entry.code === "missing") {
+      described.push(`${field} is required.`);
+    } else if (entry.code === "invalid") {
+      described.push(`${field} is invalid.`);
+    } else if (entry.code === "already_exists") {
+      described.push(`${field} already exists.`);
+    }
+  }
+  if (!described.length) return null;
+  return [...new Set(described)].join(" ");
+}
+
 async function githubFetch(pathOrUrl, init, token) {
   const url = pathOrUrl.startsWith("https://")
     ? pathOrUrl
@@ -673,6 +700,12 @@ async function githubFetch(pathOrUrl, init, token) {
     const payload = await response.json().catch(() => null);
     if (typeof payload?.message === "string") {
       githubMessage = payload.message;
+    }
+    // Validation failures (422) put the useful reason in `errors`; the
+    // top-level message is only ever "Unprocessable Entity".
+    const details = describeGitHubErrors(payload?.errors);
+    if (details) {
+      githubMessage = githubMessage ? `${githubMessage}: ${details}` : details;
     }
   }
   let message =

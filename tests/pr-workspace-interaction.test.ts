@@ -150,6 +150,73 @@ test("switching pull requests clears the previously selected file", async () => 
   }
 });
 
+test("the review dialog withholds Approve on the viewer's own pull request", async () => {
+  const dom = installDom();
+  let cleanupDom: (() => void) | undefined;
+
+  try {
+    const { cleanup, fireEvent, render } = await import(
+      "@testing-library/react"
+    );
+    cleanupDom = cleanup;
+
+    const view = render(
+      createElement(PrWorkspace as ComponentType<WorkspaceProps>, {
+        initialDemoInbox: demoInbox,
+        initialNow: Date.parse(demoInbox.syncedAt),
+      }),
+    );
+
+    fireEvent.click(
+      await view.findByRole("button", { name: /Explore preview mode/ }),
+    );
+
+    // Authored: GitHub would reject the approval, so the option is inert.
+    fireEvent.click(
+      await view.findByRole("option", {
+        name: /Guard webhook retries with idempotency keys/,
+      }),
+    );
+    fireEvent.click(view.getByRole("button", { name: "Review" }));
+    const blockedApprove = await view.findByRole("radio", {
+      name: /^Approve/,
+    });
+    assert.equal((blockedApprove as HTMLButtonElement).disabled, true);
+    assert.match(
+      blockedApprove.textContent ?? "",
+      /You cannot approve your own pull request/,
+    );
+    fireEvent.click(view.getByRole("button", { name: "Close review" }));
+
+    // Review requested: Approve stays available.
+    fireEvent.click(
+      view.getByRole("option", {
+        name: /Add keyboard shortcuts to the review queue/,
+      }),
+    );
+    fireEvent.click(view.getByRole("button", { name: "Review" }));
+    const approve = await view.findByRole("radio", { name: /^Approve/ });
+    assert.equal((approve as HTMLButtonElement).disabled, false);
+    fireEvent.click(approve);
+    assert.equal(approve.getAttribute("aria-checked"), "true");
+    assert.equal(
+      (
+        view.getByRole("button", {
+          name: "Preview submission",
+        }) as HTMLButtonElement
+      ).disabled,
+      false,
+    );
+  } finally {
+    try {
+      cleanupDom?.();
+    } finally {
+      dom.window.close();
+      uninstallDom();
+    }
+  }
+});
+
 type WorkspaceProps = NonNullable<Parameters<typeof PrWorkspace>[0]>;
 
 function controlledElements(button: HTMLElement): HTMLElement[] {
