@@ -92,6 +92,64 @@ test("workspace panels collapse from the viewer boundary and restore context", a
   }
 });
 
+test("switching pull requests clears the previously selected file", async () => {
+  const dom = installDom();
+  let cleanupDom: (() => void) | undefined;
+
+  try {
+    const { cleanup, fireEvent, render } = await import(
+      "@testing-library/react"
+    );
+    cleanupDom = cleanup;
+
+    // `screen` is bound to the document that existed when
+    // @testing-library/react was first imported, so a second render in this
+    // file (with its own JSDOM instance) must use render()'s own bound
+    // queries instead of the module-level `screen` singleton.
+    const view = render(
+      createElement(PrWorkspace as ComponentType<WorkspaceProps>, {
+        initialDemoInbox: demoInbox,
+        initialNow: Date.parse(demoInbox.syncedAt),
+      }),
+    );
+
+    const preview = await view.findByRole("button", {
+      name: /Explore preview mode/,
+    });
+    fireEvent.click(preview);
+
+    fireEvent.click(
+      await view.findByRole("option", {
+        name: /Guard webhook retries with idempotency keys/,
+      }),
+    );
+    const firstPullRequestFile = await view.findByTitle("src/change.ts");
+    fireEvent.click(firstPullRequestFile);
+    assert.equal(
+      firstPullRequestFile.getAttribute("aria-selected"),
+      "true",
+    );
+
+    fireEvent.click(
+      view.getByRole("option", {
+        name: /Refresh status badge contrast and focus states/,
+      }),
+    );
+    const secondPullRequestFile = await view.findByTitle("src/change.ts");
+    assert.equal(
+      secondPullRequestFile.getAttribute("aria-selected"),
+      "false",
+    );
+  } finally {
+    try {
+      cleanupDom?.();
+    } finally {
+      dom.window.close();
+      uninstallDom();
+    }
+  }
+});
+
 type WorkspaceProps = NonNullable<Parameters<typeof PrWorkspace>[0]>;
 
 function controlledElements(button: HTMLElement): HTMLElement[] {

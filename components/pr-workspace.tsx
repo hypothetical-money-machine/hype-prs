@@ -829,6 +829,7 @@ export function PrWorkspace({
                 usingDemo={usingDemo}
               />
               <DiffWorkspace
+                key={selectedPullRequest.id}
                 diff={displayedDiff}
                 fileBrowserCollapsed={leftColumnsCollapsed}
                 layout={diffLayout}
