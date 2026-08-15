@@ -28,7 +28,7 @@ test("server-renders a neutral session check before auth state is known", async 
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Hype — the pull request pulse<\/title>/i);
+  assert.match(html, /<title>Hype PRs — the pull request pulse<\/title>/i);
   assert.match(html, /name="color-scheme" content="light dark"/i);
   assert.match(html, /src="\/theme-init\.js"/i);
   assert.match(html, /Restoring your session/);
