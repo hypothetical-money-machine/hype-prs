@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GatewayError } from "../lib/gateway-error";
 import {
   buildMappedInbox,
   fetchInboxPage,
@@ -220,4 +221,45 @@ test("fetchInboxPage throws with the server-provided error message on failure", 
     fetchInboxPage({ page: 1, fetchImpl }),
     /Rate limit reached/,
   );
+});
+
+test("fetchInboxPage preserves the server's typed error code and status", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "not_connected",
+          message: "Connect an approved GitHub App to continue.",
+        },
+      }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    );
+  await assert.rejects(
+    fetchInboxPage({ page: 1, fetchImpl }),
+    (error: unknown) =>
+      error instanceof GatewayError &&
+      error.code === "not_connected" &&
+      error.status === 401 &&
+      error.message === "Connect an approved GitHub App to continue.",
+  );
+});
+
+test("fetchInboxPage reports a code-less failure without inventing a code", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response("upstream exploded", { status: 502 });
+  await assert.rejects(
+    fetchInboxPage({ page: 1, fetchImpl }),
+    (error: unknown) =>
+      error instanceof GatewayError &&
+      error.code === null &&
+      error.status === 502 &&
+      error.message === "Request failed (502).",
+  );
+});
+
+test("mapInboxPayload tolerates a missing data object", () => {
+  const mapped = mapInboxPayload(undefined, VIEWER, []);
+  assert.deepEqual(mapped.pullRequests, []);
+  assert.equal(mapped.rateLimit, null);
+  assert.equal(mapped.viewer, VIEWER);
 });
