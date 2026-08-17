@@ -176,7 +176,7 @@ test("mobile diff workspace switches between diff and changed files tabs", async
     );
 
     // Clicking a file inside changed files switches back to diff tab
-    const fileNode = await view.findByTitle("src/change.ts");
+    const fileNode = await view.findByTitle("src/change.tsx");
     fireEvent.click(fileNode);
     assert.equal(
       diffWorkspace.getAttribute("data-mobile-tab"),

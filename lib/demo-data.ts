@@ -416,7 +416,30 @@ index 3c36a3d..c40f0f9 100644
  @media (prefers-reduced-motion: reduce) {
    .review-row {
      transition: none;
+diff --git a/docs/keyboard-shortcuts.md b/docs/keyboard-shortcuts.md
+index 5b1c9d2..8f42e17 100644
+--- a/docs/keyboard-shortcuts.md
++++ b/docs/keyboard-shortcuts.md
+@@ -1,4 +1,9 @@
+ # Keyboard shortcuts
+\u0020
+-Use the arrow keys to move through the queue.
+-Press Enter to open a pull request.
++| Key | Action |
++| --- | --- |
++| J | Move down the queue |
++| K | Move up the queue |
++| Enter | Open the focused pull request |
++
++Shortcuts are ignored while a text field has focus.
 `;
+
+// The generic demo diffs reuse the console patch with its review-queue files
+// renamed. The changed-file list must stay in lockstep with the rewritten
+// patch headers: a file the patch does not mention renders as "no textual
+// patch" when clicked in the tree.
+const renameConsoleFile = (filename: string): string =>
+  filename.replaceAll("src/features/inbox/ReviewQueue", "src/change");
 
 // Diffs only read timestamp-free fields, so one snapshot is fine here.
 export const demoDiffs: Record<string, PullRequestDiff> = Object.fromEntries(
@@ -427,27 +450,15 @@ export const demoDiffs: Record<string, PullRequestDiff> = Object.fromEntries(
       files:
         pullRequest.id === "demo-842"
           ? consoleFiles
-          : [
-              {
-                additions: pullRequest.additions,
-                blobUrl: null,
-                changes: pullRequest.additions + pullRequest.deletions,
-                deletions: pullRequest.deletions,
-                filename: "src/change.ts",
-                patch: null,
-                previousFilename: null,
-                rawUrl: null,
-                status: "modified",
-              },
-            ],
+          : consoleFiles.map((file) => ({
+              ...file,
+              filename: renameConsoleFile(file.filename),
+            })),
       headSha: pullRequest.headSha,
       patch:
         pullRequest.id === "demo-842"
           ? consolePatch
-          : consolePatch.replaceAll(
-              "src/features/inbox/ReviewQueue",
-              "src/change",
-            ),
+          : renameConsoleFile(consolePatch),
       truncated: false,
     },
   ]),
