@@ -5,6 +5,7 @@ import {
   GitHubApiError,
   PR_FRAGMENT,
   getViewerWithToken,
+  loadInboxPageWithToken,
   loadInboxWithToken,
   loadPullDiffWithToken,
   refreshUserToken,
@@ -712,6 +713,121 @@ test("web refresh sends the client secret", async () => {
       refreshToken: "refresh",
     });
     assert.match(requestBody, /client_secret=secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginated inbox page passes per-bucket after cursors and perBucket", async () => {
+  const originalFetch = globalThis.fetch;
+  const graphqlBodies: Array<{ variables?: Record<string, unknown> }> = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    graphqlBodies.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      data: {
+        assigned: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-07-01T01:00:00.000Z" },
+        reviewRequested: {
+          nodes: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+      },
+    });
+  };
+
+  try {
+    await loadInboxPageWithToken("secret-token", {
+      perBucket: 25,
+      cursors: {
+        authored: "cursor_a",
+        reviewRequested: "cursor_r",
+      },
+    });
+    const variables = graphqlBodies[0]?.variables;
+    assert.equal(variables?.perBucket, 25);
+    assert.equal(variables?.authoredAfter, "cursor_a");
+    assert.equal(variables?.reviewAfter, "cursor_r");
+    assert.equal(variables?.assignedAfter, null);
+    assert.equal(variables?.reviewedAfter, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginated inbox page returns raw bucket nodes and pageInfo", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({
+      data: {
+        assigned: {
+          nodes: [
+            {
+              id: "PR_assigned",
+              repository: { nameWithOwner: "acme/console" },
+              number: 1,
+              title: "Assigned",
+              url: "https://github.com/acme/console/pull/1",
+              baseRefName: "main",
+              headRefName: "feature",
+              headRefOid: "a".repeat(40),
+              isDraft: false,
+              additions: 1,
+              deletions: 1,
+              changedFiles: 1,
+              comments: { totalCount: 0 },
+              labels: { nodes: [] },
+              commits: {
+                nodes: [
+                  { commit: { oid: "a".repeat(40), statusCheckRollup: null } },
+                ],
+              },
+              latestOpinionatedReviews: { nodes: [] },
+              reviewRequests: { nodes: [] },
+              reviewDecision: null,
+              mergeable: "MERGEABLE",
+              createdAt: "2026-07-01T00:00:00.000Z",
+              updatedAt: "2026-07-01T00:00:00.000Z",
+              author: { login: "octocat", name: "Octo Cat", avatarUrl: null },
+            },
+          ],
+          pageInfo: { hasNextPage: true, endCursor: "next" },
+        },
+        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        reviewRequested: {
+          nodes: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: { cost: 1, remaining: 4997, resetAt: "2026-07-01T01:00:00.000Z" },
+      },
+    });
+  };
+
+  try {
+    const page = await loadInboxPageWithToken("secret-token", { perBucket: 25 });
+    const assignedNodes = page.buckets.assigned as Array<{ id: string }>;
+    assert.equal(assignedNodes.length, 1);
+    assert.equal(assignedNodes[0]?.id, "PR_assigned");
+    assert.equal(page.pageInfo.assigned.hasNextPage, true);
+    assert.equal(page.pageInfo.assigned.endCursor, "next");
+    assert.equal(page.viewer?.login, "morgan");
+    assert.equal(page.warnings.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
