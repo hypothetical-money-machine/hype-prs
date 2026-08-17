@@ -7,6 +7,16 @@
     "nodejs_compat"
   ],
   "main": "./worker/index.ts",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
