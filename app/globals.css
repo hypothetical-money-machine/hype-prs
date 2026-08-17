@@ -2523,6 +2523,40 @@ textarea:focus-visible {
   max-width: 360px;
 }
 
+.diff-fallback-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* A single unavailable file keeps the rest of the diff rendered; the notice
+   floats over the top edge of the canvas instead of replacing it. */
+.diff-file-notice {
+  align-items: center;
+  background: var(--amber-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--amber) 20%, transparent);
+  color: var(--warning-text);
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+  inset: 0 0 auto;
+  padding: 10px 16px;
+  position: absolute;
+  z-index: 6;
+}
+
+.diff-file-notice span {
+  flex: 1;
+}
+
+.diff-file-notice button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+}
+
 .diff-loading {
   align-content: center;
   display: grid;

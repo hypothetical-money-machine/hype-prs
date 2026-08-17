@@ -41,9 +41,12 @@ interface DiffWorkspaceProps {
   diff: PullRequestDiff;
   fileBrowserCollapsed: boolean;
   layout: DiffLayout;
+  /** Set when the diff request itself failed; renders a retryable panel. */
+  loadErrorMessage?: string | null;
   loading: boolean;
   onLayoutChange(layout: DiffLayout): void;
   onOpenInGitHub(): void;
+  onRetryLoad?(): void;
   themePreference: ThemePreference;
 }
 
@@ -57,9 +60,11 @@ export function DiffWorkspace({
   diff,
   fileBrowserCollapsed,
   layout,
+  loadErrorMessage = null,
   loading,
   onLayoutChange,
   onOpenInGitHub,
+  onRetryLoad,
   themePreference,
 }: DiffWorkspaceProps) {
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
@@ -277,6 +282,12 @@ export function DiffWorkspace({
         <div className="diff-canvas" ref={viewerSurfaceRef} tabIndex={-1}>
           {loading ? (
             <DiffLoading />
+          ) : loadErrorMessage ? (
+            <DiffLoadFailed
+              message={loadErrorMessage}
+              onOpenInGitHub={onOpenInGitHub}
+              onRetry={onRetryLoad}
+            />
           ) : diff.truncated || !diff.patch ? (
             <DiffFallback
               reason={
@@ -291,42 +302,55 @@ export function DiffWorkspace({
               reason={parsed.error}
               onOpenInGitHub={onOpenInGitHub}
             />
-          ) : selectedFileUnavailable ? (
-            <DiffFallback
-              reason={`GitHub didn't return a text diff for ${selectedFile.filename}. Other text files are still available in Files.`}
-              onOpenInGitHub={onOpenInGitHub}
-            />
           ) : (
-            <CodeView
-              key={`${diff.baseSha}:${diff.headSha}`}
-              ref={viewerRef}
-              disableWorkerPool
-              items={parsed.items}
-              options={{
-                diffIndicators: "bars",
-                diffStyle: renderedLayout,
-                layout: {
-                  gap: 1,
-                  paddingBottom: 24,
-                  paddingTop: 0,
-                },
-                overflow: "scroll",
-                stickyHeaders: true,
-                theme: {
-                  dark: "github-dark-default",
-                  light: "github-light-default",
-                },
-                themeType: themePreference,
-              }}
-              style={
-                {
-                  "--diffs-font-size": `${fontSizePt}pt`,
-                  "--diffs-line-height": `${getDiffLineHeightPt(fontSizePt)}pt`,
-                  height: "100%",
-                  overflow: "auto",
-                } as CSSProperties
-              }
-            />
+            <>
+              {selectedFileUnavailable && (
+                <div className="diff-file-notice" role="status">
+                  <TriangleAlert aria-hidden="true" size={15} />
+                  <span>
+                    GitHub didn&apos;t return a text diff for{" "}
+                    {selectedFile.filename}. The other text files are still
+                    rendered below.
+                  </span>
+                  <button
+                    onClick={() => setSelectedFilename(null)}
+                    type="button"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              <CodeView
+                key={`${diff.baseSha}:${diff.headSha}`}
+                ref={viewerRef}
+                disableWorkerPool
+                items={parsed.items}
+                options={{
+                  diffIndicators: "bars",
+                  diffStyle: renderedLayout,
+                  layout: {
+                    gap: 1,
+                    paddingBottom: 24,
+                    paddingTop: 0,
+                  },
+                  overflow: "scroll",
+                  stickyHeaders: true,
+                  theme: {
+                    dark: "github-dark-default",
+                    light: "github-light-default",
+                  },
+                  themeType: themePreference,
+                }}
+                style={
+                  {
+                    "--diffs-font-size": `${fontSizePt}pt`,
+                    "--diffs-line-height": `${getDiffLineHeightPt(fontSizePt)}pt`,
+                    height: "100%",
+                    overflow: "auto",
+                  } as CSSProperties
+                }
+              />
+            </>
           )}
         </div>
       </section>
@@ -426,6 +450,38 @@ function DiffFallback({
       <button className="secondary-button" onClick={onOpenInGitHub} type="button">
         Open in GitHub
       </button>
+    </div>
+  );
+}
+
+function DiffLoadFailed({
+  message,
+  onOpenInGitHub,
+  onRetry,
+}: {
+  message: string;
+  onOpenInGitHub(): void;
+  onRetry?(): void;
+}) {
+  return (
+    <div className="diff-fallback" role="alert">
+      <TriangleAlert aria-hidden="true" size={28} />
+      <strong>Could not load this diff</strong>
+      <p>{message}</p>
+      <div className="diff-fallback-actions">
+        {onRetry && (
+          <button className="primary-button" onClick={onRetry} type="button">
+            Retry
+          </button>
+        )}
+        <button
+          className="secondary-button"
+          onClick={onOpenInGitHub}
+          type="button"
+        >
+          Open this diff on GitHub
+        </button>
+      </div>
     </div>
   );
 }

@@ -11,9 +11,15 @@ test("web session keeps credentials server-side and preserves rotated refresh to
     readFile(new URL("app/api/github/disconnect/route.ts", root), "utf8"),
   ]);
 
-  // Reviews are bound to the exact comparison that was inspected.
-  assert.match(workspace, /liveDiffState\.inboxSyncedAt === inboxData\.syncedAt/);
+  // Reviews are bound to the exact comparison that was inspected: the diff
+  // is only trusted for the selected pull request at its displayed head
+  // revision, and the submitted review pins both SHAs.
+  assert.match(
+    workspace,
+    /liveDiffState\.diff\.headSha === selectedPullRequest\?\.headSha/,
+  );
   assert.match(workspace, /baseCommitId: displayedDiff\.baseSha/);
+  assert.match(workspace, /commitId: displayedDiff\.headSha/);
 
   // A connected session must leave the restoring view before loading the inbox.
   const connectedBootstrap = workspace.slice(
