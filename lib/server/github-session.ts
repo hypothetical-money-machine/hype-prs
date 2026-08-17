@@ -75,8 +75,10 @@ export async function readGitHubSession(): Promise<GitHubSession | null> {
     ) {
       // A parallel request may already have rotated this one-time refresh
       // token and set a newer cookie. Do not emit a deletion cookie from the
-      // losing response, because it could overwrite that valid session.
-      return null;
+      // losing response, because it could overwrite that valid session. The
+      // loser's access token can still be valid for up to REFRESH_EARLY_MS,
+      // so keep serving it instead of reporting "disconnected".
+      return expiresAt > Date.now() ? session : null;
     }
     // A transient refresh failure (GitHub 5xx, network error) must not read as
     // "disconnected". The current access token is still valid for up to

@@ -32,6 +32,12 @@ test("web session keeps credentials server-side and preserves rotated refresh to
     webSession.indexOf("throw error;"),
   );
   assert.doesNotMatch(badRefreshBranch, /clearGitHubSession/);
+  // The loser of a concurrent refresh race keeps serving its still-valid
+  // access token instead of reporting the user as disconnected.
+  assert.match(
+    badRefreshBranch,
+    /return expiresAt > Date\.now\(\) \? session : null;/,
+  );
 
   // Only an explicit disconnect clears the session cookie.
   assert.match(disconnectRoute, /clearGitHubSession\(\)/);
