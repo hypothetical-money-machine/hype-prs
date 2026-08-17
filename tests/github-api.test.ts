@@ -820,7 +820,10 @@ test("web refresh sends the client secret", async () => {
 
 test("paginated inbox page passes per-bucket after cursors and perBucket", async () => {
   const originalFetch = globalThis.fetch;
-  const graphqlBodies: Array<{ variables?: Record<string, unknown> }> = [];
+  const graphqlBodies: Array<{
+    query?: string;
+    variables?: Record<string, unknown>;
+  }> = [];
   globalThis.fetch = async (input, init) => {
     if (String(input).endsWith("/user")) {
       return Response.json({
@@ -853,6 +856,10 @@ test("paginated inbox page passes per-bucket after cursors and perBucket", async
       },
     });
     const variables = graphqlBodies[0]?.variables;
+    const query = graphqlBodies[0]?.query ?? "";
+    assert.match(query, /fragment PullRequestInboxItemDetail on PullRequest/);
+    assert.match(query, /\.\.\.PullRequestInboxItemDetail/);
+    assert.doesNotMatch(query, /\.\.\.PullRequestInboxItem(?!Detail)/);
     assert.equal(variables?.perBucket, 25);
     assert.equal(variables?.authoredAfter, "cursor_a");
     assert.equal(variables?.reviewAfter, "cursor_r");

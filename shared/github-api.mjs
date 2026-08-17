@@ -209,7 +209,7 @@ export const INBOX_PAGE_QUERY = `
       after: $authoredAfter
     ) {
       nodes {
-        ...PullRequestInboxItem
+        ...PullRequestInboxItemDetail
       }
       pageInfo {
         hasNextPage
@@ -223,7 +223,7 @@ export const INBOX_PAGE_QUERY = `
       after: $assignedAfter
     ) {
       nodes {
-        ...PullRequestInboxItem
+        ...PullRequestInboxItemDetail
       }
       pageInfo {
         hasNextPage
@@ -237,7 +237,7 @@ export const INBOX_PAGE_QUERY = `
       after: $reviewAfter
     ) {
       nodes {
-        ...PullRequestInboxItem
+        ...PullRequestInboxItemDetail
       }
       pageInfo {
         hasNextPage
@@ -251,7 +251,7 @@ export const INBOX_PAGE_QUERY = `
       after: $reviewedAfter
     ) {
       nodes {
-        ...PullRequestInboxItem
+        ...PullRequestInboxItemDetail
       }
       pageInfo {
         hasNextPage
