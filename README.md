@@ -7,15 +7,16 @@ one interface.
 
 The implemented MVP includes:
 
-- Needs attention as the default, plus Review requested, My PRs, CI failing,
-  Awaiting response, Recently updated, Stale, Repository, Author, and All PRs.
+- Needs attention as the default, plus Review requested, My PRs, Checks failing,
+  Waiting on others, Recent activity, Stale, By repository, By author, and All
+  pull requests.
 - Explainable action reasons and deterministic ranking.
 - Search, explicit sorts, manual refresh, and keyboard navigation.
 - A directory file tree and split/unified multi-file diffs powered by
   `@pierre/diffs`.
 - Pull-request-level Comment, Approve, and Request changes reviews.
 - GitHub App authorization for the web.
-- A complete synthetic demo mode when GitHub is not configured.
+- A complete preview mode with sample data when GitHub is not configured.
 
 See [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) for the exact MVP boundary and
 post-MVP work.
@@ -26,7 +27,7 @@ post-MVP work.
 - npm
 - A GitHub App only when using live GitHub data
 
-## Run the demo
+## Explore the preview
 
 No credentials are required.
 
@@ -35,8 +36,8 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000>. The app remains in demo mode until a GitHub App is
-configured and connected.
+Open <http://localhost:3000>. The app remains in preview mode until a GitHub App
+is configured and connected.
 
 ## Configure live GitHub access
 
@@ -116,7 +117,7 @@ does not use D1 or R2; `.openai/hosting.json` leaves both bindings unset.
 | Browser transport | `lib/github-gateway.ts` and `app/api/github/` |
 | Inbox cache and auto-refresh | `lib/inbox-cache.ts` and `components/use-refresh-interval.ts` |
 | Web session protection | `lib/server/github-session.ts` |
-| Demo data | `lib/demo-data.ts` |
+| Preview data | `lib/demo-data.ts` |
 
 The browser path is:
 
@@ -177,7 +178,7 @@ permissions.
 - Public API errors are sanitized.
 
 Disconnect removes the local session and returns to the unauthenticated landing
-page. Demo mode starts only through the explicit preview action. Do not add
+page. Preview mode starts only through the explicit preview action. Do not add
 tokens, secrets, private diffs, or repository data to logs or committed fixtures.
 
 ## Current MVP limits

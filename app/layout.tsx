@@ -33,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
         "See what needs you now. Review pull requests across repositories from one action-first queue.",
       images: [
         {
-          alt: "Hype PRs action queue and code diff",
+          alt: "Hype PRs triage queue and code diff",
           height: 909,
           url: new URL("/og.png", origin).toString(),
           width: 1731,

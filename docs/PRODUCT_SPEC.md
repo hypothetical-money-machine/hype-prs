@@ -25,7 +25,7 @@ Repository and author groupings are available as secondary views.
 
 - **Reviewer:** find direct review obligations and inspect the changed files
   without opening each repository.
-- **Author:** spot changes requested, failing CI, merge conflicts, and work that
+- **Author:** spot changes requested, failing checks, merge conflicts, and work that
   is approved and green.
 - **Maintainer:** move from a personal action queue into repository or author
   groupings when broader context is useful.
@@ -80,14 +80,14 @@ In precedence order:
 
 In precedence order:
 
-1. **CI failed:** an authored pull request has a failing aggregate check state.
+1. **Checks failing:** an authored pull request has a failing aggregate check state.
 2. **Merge conflict:** an authored pull request is conflicting.
 3. **Ready:** an authored, non-draft pull request is approved, green, and
    mergeable.
 
 ### Lane 3: modeled team obligation
 
-- **Team review:** the canonical/demo model can represent a non-draft pull
+- **Team review:** the canonical/preview model can represent a non-draft pull
   request requesting one of the viewer's teams. Live viewer-team enumeration is
   post-MVP and is not inferred from unrelated team requests.
 
@@ -100,10 +100,10 @@ In precedence order:
 
 In precedence order:
 
-1. **Awaiting review:** an authored pull request is waiting for review.
+1. **Waiting for review:** an authored pull request is waiting for review.
 2. **Checks running:** an authored pull request has pending checks.
 3. **Draft:** draft work is kept out of the action queue.
-4. **Updated:** remaining recently changed work.
+4. **Recent activity:** remaining recently changed work.
 
 The interface shows the reason chip, a plain-language explanation, and the
 reason timestamp on every row.
@@ -116,14 +116,14 @@ A pull request may appear in more than one view.
 | --- | --- |
 | **Needs attention** | Lanes 1–4, ordered by lane, oldest available action signal, latest activity, then stable repository/number tie-breaks. This is the default. |
 | **Review requested** | Non-draft direct review requests, plus modeled team requests when present. Direct requests rank ahead of team requests; least-recently updated requests rank first because the current query does not expose request time. |
-| **My PRs** | Open pull requests authored by the viewer, action-ranked. |
-| **CI failing** | Fetched pull requests whose aggregate check state is failure, action-ranked. |
-| **Awaiting response** | Authored pull requests classified as awaiting review or checks running. |
-| **Recently updated** | Pull requests updated within the non-stale window, newest activity first by default. |
+| **My pull requests** | Open pull requests authored by the viewer, action-ranked. |
+| **Checks failing** | Fetched pull requests whose aggregate check state is failure, action-ranked. |
+| **Waiting on others** | Authored pull requests waiting for review or checks to finish. |
+| **Recent activity** | Pull requests with meaningful activity in the non-stale window, newest first by default. |
 | **Stale** | Pull requests with no meaningful GitHub update for at least seven days. |
 | **By repository** | All fetched pull requests grouped by repository. Groups with more actionable items rank first; names break ties. |
 | **By author** | All fetched pull requests grouped by author. Groups with more actionable items rank first; names break ties. |
-| **All PRs** | The complete fetched and deduplicated set, recently updated first by default. |
+| **All pull requests** | The complete fetched and deduplicated set, recent activity first by default. |
 
 All views support client-side search across title, repository, author, PR
 number, and reason text. Available explicit sorts are action priority, recent
@@ -136,17 +136,17 @@ within each group.
 ### 1. Launch and sign in
 
 An unauthenticated launch opens on the GitHub sign-in flow rather than loading
-synthetic pull requests. A user with an existing valid session continues
+sample pull requests. A user with an existing valid session continues
 directly to their live workspace. The launch screen also offers an explicit
-**Explore preview mode** action that enters the full interface with synthetic
-data and no GitHub authorization.
+**Explore preview** action that enters the full interface with sample data and
+no GitHub authorization.
 
-### 2. Explore in demo mode
+### 2. Explore in preview mode
 
-With no GitHub App configuration, the full shared UI loads synthetic pull
+With no GitHub App configuration, the full shared UI loads sample pull
 requests and diffs. Views, ranking, search, keyboard navigation, file browsing,
 diff layout, and the formal review dialog remain usable without live access.
-Demo review submission changes demo state only.
+Preview review submission changes preview state only and is not sent to GitHub.
 
 ### 3. Connect GitHub
 
@@ -155,7 +155,7 @@ Demo review submission changes demo state only.
   `HttpOnly`, `SameSite=Lax` session cookie.
 - The flow validates the connected viewer before loading live data.
 - Disconnect deletes the active web cookie and returns the interface to the
-  unauthenticated landing page. Demo mode remains available only through the
+  unauthenticated landing page. Preview mode remains available only through the
   landing page's explicit preview action.
 
 The connection UI states that Hype PRs is another GitHub client and that normal
@@ -214,7 +214,7 @@ Line-level comments and suggestions are not part of this MVP.
 ## MVP scope
 
 - Web-first React UI.
-- Demo mode with representative synthetic data.
+- Preview mode with representative sample data.
 - GitHub.com user connection through an approved GitHub App.
 - Live authored, assigned, review-requested, and reviewed PR discovery.
 - Ten action and browse views described above.
@@ -256,7 +256,7 @@ current MVP complete:
 - Scheduled background synchronization and webhook/push updates.
 - Exact review-request timestamps and timeline-derived ownership,
   unresolved-thread awareness, and required-check-level status detail.
-- Live issue labels and issue-comment counts; the synthetic demo may show these
+- Live issue labels and issue-comment counts; preview data may show these
   fields without requesting GitHub Issues permission.
 - Authenticated viewer-team enumeration, team-review search, and live mention
   detection.
@@ -333,17 +333,17 @@ fallback behavior.
 8. Selecting a file scrolls to its diff; missing, binary, oversized, truncated,
    revision-changed, and invalid diffs show an explicit GitHub fallback instead
    of a blank pane.
- 9. Comment, Approve, and Request changes submit a formal review for the selected
-    PR and refresh its state; no line-comment behavior is implied.
- 10. Web auth uses state, PKCE, encrypted `HttpOnly` cookies, and same-origin
-     mutation checks; external navigation is limited to GitHub.
- 11. With no GitHub configuration, demo mode remains fully navigable and cannot
-     mutate GitHub.
- 12. The inbox renders the cached local payload immediately on a returning
-     session, fetches the live first page as soon as the connection check
-     resolves, fills in the second page in the background, and lets the user
-     opt into an auto-refresh cadence (Off by default; 1, 2, 5, 15, or 30
-     minutes) that pauses while the tab is hidden.
+9. Comment, Approve, and Request changes submit a formal review for the selected
+   PR and refresh its state; no line-comment behavior is implied.
+10. Web auth uses state, PKCE, encrypted `HttpOnly` cookies, and same-origin
+    mutation checks; external navigation is limited to GitHub.
+11. With no GitHub configuration, preview mode remains fully navigable and cannot
+    mutate GitHub.
+12. The inbox renders the cached local payload immediately on a returning
+    session, fetches the live first page as soon as the connection check
+    resolves, fills in the second page in the background, and lets the user
+    opt into an auto-refresh cadence (Off by default; 1, 2, 5, 15, or 30
+    minutes) that pauses while the tab is hidden.
 
 ## Implementation references
 

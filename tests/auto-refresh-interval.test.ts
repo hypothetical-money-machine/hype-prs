@@ -26,7 +26,7 @@ test("the queue header exposes the auto-refresh interval dropdown", async () => 
     );
 
     fireEvent.click(
-      await view.findByRole("button", { name: /Explore preview mode/ }),
+      await view.findByRole("button", { name: /Explore preview/ }),
     );
 
     const select = (await view.findByRole("combobox", {
@@ -74,7 +74,7 @@ test("selecting a non-default interval persists it and shows it in the status li
     );
 
     fireEvent.click(
-      await view.findByRole("button", { name: /Explore preview mode/ }),
+      await view.findByRole("button", { name: /Explore preview/ }),
     );
 
     const select = (await view.findByRole("combobox", {
@@ -128,7 +128,7 @@ test("restoring a non-default interval on a fresh render applies it to the selec
     );
 
     fireEvent.click(
-      await view.findByRole("button", { name: /Explore preview mode/ }),
+      await view.findByRole("button", { name: /Explore preview/ }),
     );
 
     const select = (await view.findByRole("combobox", {

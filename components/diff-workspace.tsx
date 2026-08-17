@@ -156,7 +156,7 @@ export function DiffWorkspace({
           role="tab"
           type="button"
         >
-          Diff View
+          Diff
         </button>
         <button
           aria-selected={mobileTab === "files"}
@@ -194,7 +194,7 @@ export function DiffWorkspace({
           <input
             value={fileQuery}
             onChange={(event) => setFileQuery(event.target.value)}
-            placeholder="Filter paths"
+            placeholder="Search changed files"
           />
         </label>
         <div className="file-tree" role="tree" aria-label="Changed file tree">
@@ -270,7 +270,7 @@ export function DiffWorkspace({
             </div>
           </div>
           <span className="diff-engine">
-            Rendered with <strong>Pierre Diffs</strong>
+            Powered by <strong>Pierre Diffs</strong>
           </span>
         </div>
 
@@ -281,8 +281,8 @@ export function DiffWorkspace({
             <DiffFallback
               reason={
                 diff.truncated
-                  ? "This diff is binary, truncated, or larger than the safe in-app rendering limit."
-                  : "GitHub did not provide a textual patch for this pull request."
+                  ? "This diff includes a binary file, is truncated, or is too large to render here."
+                  : "GitHub didn't return a text diff for this pull request."
               }
               onOpenInGitHub={onOpenInGitHub}
             />
@@ -293,7 +293,7 @@ export function DiffWorkspace({
             />
           ) : selectedFileUnavailable ? (
             <DiffFallback
-              reason={`GitHub did not provide a textual patch for ${selectedFile.filename}. Other text files remain available in the changed-file tree.`}
+              reason={`GitHub didn't return a text diff for ${selectedFile.filename}. Other text files are still available in Files.`}
               onOpenInGitHub={onOpenInGitHub}
             />
           ) : (
@@ -421,10 +421,10 @@ function DiffFallback({
   return (
     <div className="diff-fallback">
       <TriangleAlert aria-hidden="true" size={28} />
-      <strong>Diff unavailable in Hype PRs</strong>
+      <strong>This diff isn’t available here</strong>
       <p>{reason}</p>
       <button className="secondary-button" onClick={onOpenInGitHub} type="button">
-        Open this diff on GitHub
+        Open in GitHub
       </button>
     </div>
   );
@@ -437,7 +437,7 @@ function DiffLoading() {
       <span />
       <span />
       <span />
-      <p>Loading changed files…</p>
+      <p>Loading diff…</p>
     </div>
   );
 }
@@ -461,7 +461,7 @@ function parseDiff(diff: PullRequestDiff): ParsedDiff {
     );
     if (items.length === 0) {
       return {
-        error: "The patch did not contain a renderable text diff.",
+        error: "This patch does not contain a text diff we can display.",
         itemIdByName,
         items,
       };
@@ -469,7 +469,7 @@ function parseDiff(diff: PullRequestDiff): ParsedDiff {
     return { error: null, itemIdByName, items };
   } catch {
     return {
-      error: "The diff could not be parsed safely.",
+      error: "This diff could not be displayed safely.",
       itemIdByName: new Map(),
       items: [],
     };

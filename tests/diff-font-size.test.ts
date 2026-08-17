@@ -101,7 +101,7 @@ test("DiffWorkspace renders point size stepper and steps between 10pt and 18pt",
     );
 
     const diffWorkspace = view.getByRole("tab", {
-      name: /Diff View/,
+      name: /^Diff$/,
     }).closest(".diff-workspace");
     assert.ok(diffWorkspace, "diff workspace container should exist");
     assert.equal(

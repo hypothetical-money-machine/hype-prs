@@ -31,10 +31,10 @@ test("server-renders a neutral session check before auth state is known", async 
   assert.match(html, /<title>Hype PRs — the pull request pulse<\/title>/i);
   assert.match(html, /name="color-scheme" content="light dark"/i);
   assert.match(html, /src="\/theme-init\.js"/i);
-  assert.match(html, /Restoring your session/);
+  assert.match(html, /Checking your GitHub connection/);
   assert.doesNotMatch(html, /Welcome to Hype/);
   assert.doesNotMatch(html, /Continue with GitHub/);
-  assert.doesNotMatch(html, /Explore preview mode/);
+  assert.doesNotMatch(html, /Explore preview/);
   assert.doesNotMatch(html, /Needs attention/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
 });
