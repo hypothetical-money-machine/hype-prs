@@ -469,6 +469,84 @@ test("a rejected review explains why instead of saying Unprocessable Entity", as
   }
 });
 
+test("blocks a self-approval on the server before posting the review", async () => {
+  const originalFetch = globalThis.fetch;
+  const methods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    methods.push(init?.method ?? "GET");
+    return Response.json({
+      base: { sha: BASE_SHA },
+      head: { sha: CURRENT_HEAD },
+      user: { login: "Morgan" },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      submitReviewWithToken(
+        "secret-token",
+        {
+          baseCommitId: BASE_SHA,
+          body: "Ship it.",
+          commitId: CURRENT_HEAD,
+          event: "APPROVE",
+          number: 42,
+          owner: "acme",
+          repository: "console",
+        },
+        undefined,
+        "morgan",
+      ),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "self_approval" &&
+        error.status === 422 &&
+        error.message === "You cannot approve your own pull request.",
+    );
+    // Only the freshness GET may run; the review POST must never be issued.
+    assert.deepEqual(methods, ["GET"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a viewer may still comment on their own pull request", async () => {
+  const originalFetch = globalThis.fetch;
+  const methods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    methods.push(init?.method ?? "GET");
+    if (init?.method === "POST") {
+      return Response.json({ submitted_at: "2026-08-01T00:00:00.000Z" });
+    }
+    return Response.json({
+      base: { sha: BASE_SHA },
+      head: { sha: CURRENT_HEAD },
+      user: { login: "morgan" },
+    });
+  };
+
+  try {
+    const result = await submitReviewWithToken(
+      "secret-token",
+      {
+        baseCommitId: BASE_SHA,
+        body: "Noting a follow-up.",
+        commitId: CURRENT_HEAD,
+        event: "COMMENT",
+        number: 42,
+        owner: "acme",
+        repository: "console",
+      },
+      undefined,
+      "morgan",
+    );
+    assert.equal(result.submittedAt, "2026-08-01T00:00:00.000Z");
+    assert.deepEqual(methods, ["GET", "POST"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("rejects unsafe repository coordinates before making a request", async () => {
   await assert.rejects(
     loadPullDiffWithToken("token", {

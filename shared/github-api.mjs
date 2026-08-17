@@ -528,7 +528,7 @@ export async function loadPullDiffWithToken(
   };
 }
 
-export async function submitReviewWithToken(token, input, signal) {
+export async function submitReviewWithToken(token, input, signal, viewerLogin = null) {
   if (!input || typeof input !== "object") {
     throw new GitHubApiError("Invalid review.", {
       code: "invalid_review",
@@ -598,6 +598,23 @@ export async function submitReviewWithToken(token, input, signal) {
       "This pull request comparison changed since it was loaded. Refresh before submitting the review.",
       { code: "revision_changed", status: 409 },
     );
+  }
+
+  // GitHub rejects self-approvals anyway, but with an opaque 422. The UI's
+  // author check is a heuristic (it degrades when the author maps to
+  // "ghost"), so enforce the rule here with the authoritative PR author the
+  // freshness check already fetched.
+  if (
+    event === "APPROVE" &&
+    typeof viewerLogin === "string" &&
+    viewerLogin &&
+    typeof current.user?.login === "string" &&
+    current.user.login.toLowerCase() === viewerLogin.toLowerCase()
+  ) {
+    throw new GitHubApiError("You cannot approve your own pull request.", {
+      code: "self_approval",
+      status: 422,
+    });
   }
 
   const reviewResponse = await githubFetch(

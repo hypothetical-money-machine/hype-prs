@@ -33,6 +33,7 @@ export async function POST(request: Request) {
         session.tokenSet.accessToken,
         input,
         request.signal,
+        session.viewer.login,
       ),
     );
   } catch (error) {
