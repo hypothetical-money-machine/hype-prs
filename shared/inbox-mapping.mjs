@@ -105,7 +105,7 @@ export function mapInboxPayload(data, viewer, warnings = []) {
 
   return {
     pullRequests,
-    rateLimit: data.rateLimit
+    rateLimit: data?.rateLimit
       ? {
           cost: data.rateLimit.cost,
           remaining: data.rateLimit.remaining,

@@ -818,6 +818,217 @@ test("web refresh sends the client secret", async () => {
   }
 });
 
+test("classifies FORBIDDEN-typed GraphQL errors as a permission denial", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    // The message wording differs from the well-known string; the
+    // machine-readable type alone must classify this as a 403.
+    return Response.json({
+      data: null,
+      errors: [
+        { message: "Your token has not been granted access.", type: "FORBIDDEN" },
+      ],
+    });
+  };
+
+  try {
+    for (const load of [
+      () => loadInboxWithToken("secret-token"),
+      () => loadInboxPageWithToken("secret-token", { perBucket: 25 }),
+    ]) {
+      await assert.rejects(
+        load(),
+        (error: unknown) =>
+          error instanceof GitHubApiError &&
+          error.code === "github_403" &&
+          error.status === 403 &&
+          error.message.includes("installation does not have access"),
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a non-JSON GraphQL 200 response surfaces as a GitHub error, not a crash", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return new Response("<html>Bad Gateway</html>", { status: 200 });
+  };
+
+  try {
+    for (const load of [
+      () => loadInboxWithToken("secret-token"),
+      () => loadInboxPageWithToken("secret-token", { perBucket: 25 }),
+    ]) {
+      await assert.rejects(
+        load(),
+        (error: unknown) =>
+          error instanceof GitHubApiError &&
+          error.code === "graphql_error" &&
+          error.status === 502,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an empty GraphQL payload rejects instead of rendering an empty inbox", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({});
+  };
+
+  try {
+    for (const load of [
+      () => loadInboxWithToken("secret-token"),
+      () => loadInboxPageWithToken("secret-token", { perBucket: 25 }),
+    ]) {
+      await assert.rejects(
+        load(),
+        (error: unknown) =>
+          error instanceof GitHubApiError &&
+          error.code === "graphql_error" &&
+          error.status === 502 &&
+          error.message === "GitHub returned an empty GraphQL response.",
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a review accepted with an unparseable body still reports success", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === "GET") {
+      return Response.json({
+        base: { sha: BASE_SHA },
+        head: { sha: CURRENT_HEAD },
+      });
+    }
+    return new Response("", { status: 200 });
+  };
+
+  try {
+    const result = await submitReviewWithToken("secret-token", {
+      baseCommitId: BASE_SHA,
+      body: "Looks good.",
+      commitId: CURRENT_HEAD,
+      event: "APPROVE",
+      number: 42,
+      owner: "acme",
+      repository: "console",
+    });
+    assert.ok(Number.isFinite(Date.parse(result.submittedAt)));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects dot-segment repository coordinates before making a request", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    return Response.json({});
+  };
+
+  try {
+    for (const segment of [".", ".."]) {
+      await assert.rejects(
+        loadPullDiffWithToken("token", {
+          number: 7,
+          owner: segment,
+          repository: "console",
+        }),
+        (error: unknown) =>
+          error instanceof GitHubApiError &&
+          error.code === "invalid_pull_request" &&
+          error.status === 400,
+      );
+      await assert.rejects(
+        loadPullDiffWithToken("token", {
+          number: 7,
+          owner: "acme",
+          repository: segment,
+        }),
+        (error: unknown) =>
+          error instanceof GitHubApiError &&
+          error.code === "invalid_pull_request" &&
+          error.status === 400,
+      );
+    }
+    assert.equal(requested, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("marks the diff truncated when the changed-file listing hits its page cap", async () => {
+  const originalFetch = globalThis.fetch;
+  let filePages = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const accept = new Headers(init?.headers).get("Accept");
+    if (url.includes("/files?")) {
+      filePages += 1;
+      return Response.json(
+        Array.from({ length: 100 }, (_unused, index) => ({
+          additions: 1,
+          changes: 1,
+          deletions: 0,
+          filename: `src/generated/file-${filePages}-${index}.ts`,
+          patch: "@@ -0,0 +1 @@\n+new",
+          status: "added",
+        })),
+      );
+    }
+    if (accept === "application/vnd.github.diff") {
+      return new Response("diff --git a/a b/a\n");
+    }
+    return Response.json({
+      base: { sha: BASE_SHA },
+      head: { sha: CURRENT_HEAD },
+    });
+  };
+
+  try {
+    const result = await loadPullDiffWithToken("secret-token", {
+      number: 42,
+      owner: "acme",
+      repository: "console",
+    });
+    assert.equal(filePages, 30);
+    assert.equal(result.files.length, 3000);
+    assert.equal(result.truncated, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("paginated inbox page passes per-bucket after cursors and perBucket", async () => {
   const originalFetch = globalThis.fetch;
   const graphqlBodies: Array<{
