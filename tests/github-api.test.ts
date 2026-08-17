@@ -5,6 +5,7 @@ import {
   GitHubApiError,
   PR_FRAGMENT,
   getViewerWithToken,
+  loadInboxPageWithToken,
   loadInboxWithToken,
   loadPullDiffWithToken,
   refreshUserToken,
@@ -17,10 +18,10 @@ const CURRENT_HEAD = "c".repeat(40);
 const BASE_SHA = "d".repeat(40);
 const NEW_BASE_SHA = "e".repeat(40);
 
-test("documents Contents access for commit-backed inbox fields", async () => {
+test("keeps the inbox query lightweight while documenting Contents access for diffs", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   assert.match(PR_FRAGMENT, /commits\(last: 1\)/);
-  assert.match(PR_FRAGMENT, /latestOpinionatedReviews/);
+  assert.doesNotMatch(PR_FRAGMENT, /latestOpinionatedReviews/);
   assert.match(readme, /- Contents: read/);
 });
 
@@ -46,6 +47,131 @@ test("authenticated API requests identify Hype PRs to GitHub", async () => {
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("retries a transient GitHub failure while loading the inbox", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ input: string; method?: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ input: String(input), method: init?.method });
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    if (calls.filter((call) => call.input.endsWith("/graphql")).length === 1) {
+      return new Response("Bad Gateway", { status: 502 });
+    }
+    return Response.json({
+      data: {
+        assigned: { nodes: [] },
+        authored: { nodes: [] },
+        reviewRequested: { nodes: [] },
+        reviewed: { nodes: [] },
+      },
+    });
+  };
+
+  try {
+    const result = await loadInboxWithToken("secret-token");
+    assert.deepEqual(result.pullRequests, []);
+    assert.equal(
+      calls.filter((call) => call.input.endsWith("/graphql")).length,
+      2,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("retries a transient network failure while loading GitHub data", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError("fetch failed");
+    return Response.json({
+      avatar_url: null,
+      login: "morgan",
+      name: "Morgan",
+    });
+  };
+
+  try {
+    const viewer = await getViewerWithToken("secret-token");
+    assert.equal(viewer.login, "morgan");
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not retry a GitHub review submission", async () => {
+  const originalFetch = globalThis.fetch;
+  const methods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    methods.push(init?.method ?? "GET");
+    if (init?.method === "GET") {
+      return Response.json({
+        base: { sha: BASE_SHA },
+        head: { sha: CURRENT_HEAD },
+      });
+    }
+    return new Response("Bad Gateway", { status: 502 });
+  };
+
+  try {
+    await assert.rejects(
+      submitReviewWithToken("secret-token", {
+        baseCommitId: BASE_SHA,
+        body: "Looks good",
+        commitId: CURRENT_HEAD,
+        event: "APPROVE",
+        number: 30,
+        owner: "acme",
+        repository: "console",
+      }),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "github_502" &&
+        error.message ===
+          "GitHub is temporarily unavailable. We retried automatically; try again in a moment.",
+    );
+    assert.deepEqual(methods, ["GET", "POST"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("logs safe diagnostics when a GitHub request finally fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const messages: unknown[] = [];
+  console.error = (...args) => messages.push(args[0]);
+  globalThis.fetch = async () =>
+    new Response("Not Implemented", {
+      headers: { "x-github-request-id": "ABC1:2345:6789" },
+      status: 501,
+    });
+
+  try {
+    await assert.rejects(getViewerWithToken("secret-token"));
+    const diagnostic = JSON.parse(String(messages[0]));
+    assert.deepEqual(diagnostic, {
+      attempts: 1,
+      endpoint: "/user",
+      event: "github_api_request_failed",
+      githubRequestId: "ABC1:2345:6789",
+      method: "GET",
+      status: 501,
+    });
+    assert.doesNotMatch(String(messages[0]), /secret-token/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
   }
 });
 
@@ -77,7 +203,6 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
           {
             commit: {
               oid: CURRENT_HEAD,
-              statusCheckRollup: { state: "SUCCESS" },
             },
           },
         ],
@@ -89,21 +214,8 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       id: "PR_real",
       isDraft: false,
       labels: { nodes: [{ name: "a11y" }, { name: "design-system" }] },
-      latestOpinionatedReviews: { nodes: [] },
-      mergeable: "MERGEABLE",
       number: 128,
       repository: { nameWithOwner: "real/design-system" },
-      reviewDecision: "REVIEW_REQUIRED",
-      reviewRequests: {
-        nodes: [
-          {
-            requestedReviewer: {
-              __typename: "User",
-              login: "morgan",
-            },
-          },
-        ],
-      },
       title: "Use real pull request data",
       updatedAt: "2026-07-28T18:00:00.000Z",
       url: "https://github.com/real/design-system/pull/128",
@@ -120,28 +232,19 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
         reviewRequested: { nodes: [pullRequest] },
         reviewed: { nodes: [] },
       },
-      errors: [
-        {
-          message: "Resource not accessible by integration",
-          path: [
-            "reviewRequested",
-            "nodes",
-            0,
-            "commits",
-            "nodes",
-            0,
-            "commit",
-            "statusCheckRollup",
-          ],
-        },
-      ],
     });
   };
 
   try {
     const result = await loadInboxWithToken("secret-token");
     assert.match(graphqlBodies[0]?.query ?? "", /comments\s*\{\s*totalCount/);
-    assert.match(graphqlBodies[0]?.query ?? "", /labels\(first: 100\)/);
+    assert.match(
+      graphqlBodies[0]?.query ?? "",
+      /authored: search\(type: ISSUE, query: \$authoredQuery, first: 20\)/,
+    );
+    assert.match(graphqlBodies[0]?.query ?? "", /labels\(first: 20\)/);
+    assert.doesNotMatch(graphqlBodies[0]?.query ?? "", /statusCheckRollup/);
+    assert.doesNotMatch(graphqlBodies[0]?.query ?? "", /reviewRequests/);
     assert.deepEqual(result.pullRequests[0], {
       additions: 58,
       author: {
@@ -151,7 +254,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       },
       baseRefName: "main",
       changedFiles: 3,
-      checkState: "SUCCESS",
+      checkState: "NEUTRAL",
       commentCount: 7,
       createdAt: "2026-07-26T18:00:00.000Z",
       deletions: 14,
@@ -161,11 +264,11 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       isDraft: false,
       labels: ["a11y", "design-system"],
       lastMeaningfulActivityAt: "2026-07-28T18:00:00.000Z",
-      mergeState: "MERGEABLE",
+      mergeState: "UNKNOWN",
       mentionsViewer: false,
       number: 128,
       repository: "real/design-system",
-      reviewDecision: "REVIEW_REQUIRED",
+      reviewDecision: null,
       reviewRequestedAt: null,
       teamReviewRequested: false,
       title: "Use real pull request data",
@@ -176,9 +279,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       viewerRelationship: "REVIEW_REQUESTED",
       viewerReviewState: null,
     });
-    assert.deepEqual(result.warnings, [
-      "Some pull request details are unavailable. GitHub denied: statusCheckRollup. Approve the GitHub App’s requested repository permissions to restore them.",
-    ]);
+    assert.equal(result.warnings, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -712,6 +813,128 @@ test("web refresh sends the client secret", async () => {
       refreshToken: "refresh",
     });
     assert.match(requestBody, /client_secret=secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginated inbox page passes per-bucket after cursors and perBucket", async () => {
+  const originalFetch = globalThis.fetch;
+  const graphqlBodies: Array<{
+    query?: string;
+    variables?: Record<string, unknown>;
+  }> = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    graphqlBodies.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      data: {
+        assigned: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-07-01T01:00:00.000Z" },
+        reviewRequested: {
+          nodes: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+      },
+    });
+  };
+
+  try {
+    await loadInboxPageWithToken("secret-token", {
+      perBucket: 25,
+      cursors: {
+        authored: "cursor_a",
+        reviewRequested: "cursor_r",
+      },
+    });
+    const variables = graphqlBodies[0]?.variables;
+    const query = graphqlBodies[0]?.query ?? "";
+    assert.match(query, /fragment PullRequestInboxItemDetail on PullRequest/);
+    assert.match(query, /\.\.\.PullRequestInboxItemDetail/);
+    assert.doesNotMatch(query, /\.\.\.PullRequestInboxItem(?!Detail)/);
+    assert.equal(variables?.perBucket, 25);
+    assert.equal(variables?.authoredAfter, "cursor_a");
+    assert.equal(variables?.reviewAfter, "cursor_r");
+    assert.equal(variables?.assignedAfter, null);
+    assert.equal(variables?.reviewedAfter, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginated inbox page returns raw bucket nodes and pageInfo", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json({
+      data: {
+        assigned: {
+          nodes: [
+            {
+              id: "PR_assigned",
+              repository: { nameWithOwner: "acme/console" },
+              number: 1,
+              title: "Assigned",
+              url: "https://github.com/acme/console/pull/1",
+              baseRefName: "main",
+              headRefName: "feature",
+              headRefOid: "a".repeat(40),
+              isDraft: false,
+              additions: 1,
+              deletions: 1,
+              changedFiles: 1,
+              comments: { totalCount: 0 },
+              labels: { nodes: [] },
+              commits: {
+                nodes: [
+                  { commit: { oid: "a".repeat(40), statusCheckRollup: null } },
+                ],
+              },
+              latestOpinionatedReviews: { nodes: [] },
+              reviewRequests: { nodes: [] },
+              reviewDecision: null,
+              mergeable: "MERGEABLE",
+              createdAt: "2026-07-01T00:00:00.000Z",
+              updatedAt: "2026-07-01T00:00:00.000Z",
+              author: { login: "octocat", name: "Octo Cat", avatarUrl: null },
+            },
+          ],
+          pageInfo: { hasNextPage: true, endCursor: "next" },
+        },
+        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        reviewRequested: {
+          nodes: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: { cost: 1, remaining: 4997, resetAt: "2026-07-01T01:00:00.000Z" },
+      },
+    });
+  };
+
+  try {
+    const page = await loadInboxPageWithToken("secret-token", { perBucket: 25 });
+    const assignedNodes = page.buckets.assigned as Array<{ id: string }>;
+    assert.equal(assignedNodes.length, 1);
+    assert.equal(assignedNodes[0]?.id, "PR_assigned");
+    assert.equal(page.pageInfo.assigned.hasNextPage, true);
+    assert.equal(page.pageInfo.assigned.endCursor, "next");
+    assert.equal(page.viewer?.login, "morgan");
+    assert.equal(page.warnings.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

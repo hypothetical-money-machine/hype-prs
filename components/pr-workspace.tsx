@@ -52,8 +52,18 @@ import {
 } from "react";
 import type { DiffLayout } from "./diff-workspace";
 import { ThemeToggle, useThemePreference } from "./theme-toggle";
+import { useAutoRefresh, useRefreshInterval } from "./use-refresh-interval";
 import { createDemoInbox, demoDiffs } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
+import { buildMappedInbox, fetchInboxPage } from "@/lib/inbox-pages";
+import type { InboxPage, InboxPageBucketPageInfoMap } from "@/lib/inbox-page-types";
+import {
+  clearInboxCache,
+  readInboxCache,
+  REFRESH_INTERVAL_OPTIONS,
+  type RefreshIntervalId,
+  writeInboxCache,
+} from "@/lib/inbox-cache";
 import {
   countForView,
   dominantReason,
@@ -140,14 +150,35 @@ export function PrWorkspace({
   const [leftColumnsCollapsed, setLeftColumnsCollapsed] = useState(false);
   const [mobilePane, setMobilePane] = useState<"queue" | "detail">("queue");
   const [syncing, setSyncing] = useState(false);
+  const [loadingFirstPage, setLoadingFirstPage] = useState(false);
+  const [loadingSecondPage, setLoadingSecondPage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [connectionDialog, setConnectionDialog] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [themePreference, setThemePreference] = useThemePreference();
+  const refreshInterval = useRefreshInterval();
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // `inboxGenerationRef` is bumped on every fetch (refresh, auto-refresh, or
+  // reconnect) so an in-flight response from a stale generation cannot write
+  // into state after a newer request has started. The two pages are
+  // sequential; the second page request reads the cursors that page 1
+  // returned.
+  const inboxGenerationRef = useRef(0);
+  const inboxPagesRef = useRef<{
+    pages: InboxPage[];
+    cursors: InboxPageBucketPageInfoMap;
+  }>({
+    pages: [],
+    cursors: {
+      authored: { endCursor: null, hasNextPage: false },
+      assigned: { endCursor: null, hasNextPage: false },
+      reviewRequested: { endCursor: null, hasNextPage: false },
+      reviewed: { endCursor: null, hasNextPage: false },
+    },
+  });
 
   const selectedPullRequest =
     inboxData.pullRequests.find(
@@ -196,6 +227,135 @@ export function PrWorkspace({
     );
   }, []);
 
+  // Persist only the fully merged payload. Persisting after page 1 would
+  // write a partial inbox that the next launch could hydrate as if it were
+  // complete; the user would see a plausible but silently short list of PRs
+  // with no signal that anything is missing.
+  function applyMergedInbox(
+    mapped: InboxPayload,
+    generation: number,
+    options: { resetSelection: boolean },
+  ) {
+    if (inboxGenerationRef.current !== generation) return;
+    writeInboxCache(window.localStorage, mapped);
+    setInboxData(mapped);
+    setWarning(mapped.warnings?.[0] ?? null);
+    setSelectedId((current) => {
+      if (mapped.pullRequests.some((pullRequest) => pullRequest.id === current)) {
+        return current;
+      }
+      return options.resetSelection
+        ? (mapped.pullRequests[0]?.id ?? "")
+        : current;
+    });
+    setError(null);
+  }
+
+  // Sequential two-page fetch. Page 1 is required and unblocks the inbox
+  // render. Page 2 only runs if any bucket from page 1 reported
+  // `hasNextPage`; otherwise the merged payload equals page 1. The
+  // `resetSelection` flag controls what happens on the final merge when the
+  // current selection is no longer in the live data. Bootstrap sets it to
+  // `true` so the user does not get stuck reading a PR that has been removed
+  // from the live queue; auto-refresh sets it to `false` so the user is not
+  // silently moved off the PR they are currently reading.
+  async function loadLiveInbox(options: { resetSelection: boolean } = {
+    resetSelection: false,
+  }) {
+    // The function only runs when the workspace is connected to a live
+    // session. The connection state is read here for the *current* render:
+    // a refresh button click that just set `connection.connected` may still
+    // see the old value because state updates are async, but the early
+    // return would skip the fetch. We rely on the call sites (refresh
+    // button, auto-refresh tick, bootstrap effect) to only invoke us when a
+    // live fetch is wanted.
+    const generation = inboxGenerationRef.current + 1;
+    inboxGenerationRef.current = generation;
+    inboxPagesRef.current = {
+      pages: [],
+      cursors: {
+        authored: { endCursor: null, hasNextPage: false },
+        assigned: { endCursor: null, hasNextPage: false },
+        reviewRequested: { endCursor: null, hasNextPage: false },
+        reviewed: { endCursor: null, hasNextPage: false },
+      },
+    };
+    setSyncing(true);
+    setLoadingFirstPage(true);
+    setLoadingSecondPage(false);
+    setError(null);
+
+    let firstPage: InboxPage | null = null;
+    try {
+      firstPage = (await fetchInboxPage({ page: 1 })).page;
+    } catch (nextError) {
+      if (inboxGenerationRef.current === generation) {
+        setError(messageFrom(nextError));
+        setSyncing(false);
+        setLoadingFirstPage(false);
+      }
+      return;
+    }
+    if (inboxGenerationRef.current !== generation) return;
+    inboxPagesRef.current.pages = [firstPage];
+    inboxPagesRef.current.cursors = firstPage.pageInfo;
+    const partialMerged = buildMappedInbox({ pages: [firstPage] });
+    if (partialMerged) {
+      setInboxData(partialMerged);
+      setWarning(partialMerged.warnings?.[0] ?? null);
+    }
+    setLoadingFirstPage(false);
+
+    const anyHasNextPage = Object.values(firstPage.pageInfo).some(
+      (info) => info?.hasNextPage,
+    );
+    if (!anyHasNextPage) {
+      if (partialMerged && options.resetSelection) {
+        setSelectedId((current) =>
+          partialMerged.pullRequests.some(
+            (pullRequest) => pullRequest.id === current,
+          )
+            ? current
+            : (partialMerged.pullRequests[0]?.id ?? ""),
+        );
+      }
+      if (partialMerged) {
+        writeInboxCache(window.localStorage, partialMerged);
+        setError(null);
+      }
+      setSyncing(false);
+      return;
+    }
+
+    setLoadingSecondPage(true);
+    let secondPage: InboxPage | null = null;
+    try {
+      secondPage = (
+        await fetchInboxPage({
+          page: 2,
+          cursors: firstPage.pageInfo,
+        })
+      ).page;
+    } catch (nextError) {
+      if (inboxGenerationRef.current === generation) {
+        setError(messageFrom(nextError));
+        setSyncing(false);
+        setLoadingSecondPage(false);
+      }
+      return;
+    }
+    if (inboxGenerationRef.current !== generation) return;
+    inboxPagesRef.current.pages = [firstPage, secondPage];
+    const merged = buildMappedInbox({ pages: [firstPage, secondPage] });
+    if (merged) {
+      applyMergedInbox(merged, generation, {
+        resetSelection: options.resetSelection,
+      });
+    }
+    setSyncing(false);
+    setLoadingSecondPage(false);
+  }
+
   const refreshInbox = useCallback(async () => {
     if (usingDemo || !connection.connected) {
       setInboxData({
@@ -206,24 +366,23 @@ export function PrWorkspace({
       setToast("Preview data refreshed");
       return;
     }
-
-    setSyncing(true);
-    setError(null);
-    try {
-      const next = await gateway().getInbox();
-      setInboxData(next);
-      setWarning(next.warnings?.[0] ?? null);
-      setSelectedId((current) =>
-        next.pullRequests.some((pullRequest) => pullRequest.id === current)
-          ? current
-          : (next.pullRequests[0]?.id ?? ""),
-      );
-    } catch (nextError) {
-      setError(messageFrom(nextError));
-    } finally {
-      setSyncing(false);
-    }
+    // Manual refresh resets the selection if the current PR is gone. The
+    // user explicitly asked for a refresh and would rather land on a live
+    // PR than keep reading one that no longer exists.
+    await loadLiveInbox({ resetSelection: true });
+    // `loadLiveInbox` is intentionally not in the dependency array: it
+    // closes over the current render's state and re-defining it on every
+    // state change would cause the refresh button to fire a stale fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection.connected, initialDemoInbox, usingDemo]);
+
+  useAutoRefresh({
+    enabled: !usingDemo && connection.connected && !syncing,
+    intervalMs: refreshInterval.milliseconds,
+    refresh: () => {
+      void loadLiveInbox({ resetSelection: false });
+    },
+  });
 
   useEffect(() => {
     const tick = () => setClockNow(Date.now());
@@ -241,34 +400,33 @@ export function PrWorkspace({
         setConnectionChecked(true);
         if (status.connected) {
           setWarning(null);
-          setInboxData({
-            pullRequests: [],
-            rateLimit: null,
-            syncedAt: new Date().toISOString(),
-            viewer: status.viewer ?? {
-              avatarUrl: null,
-              login: "",
-              name: null,
-            },
-          });
-          setSelectedId("");
-          setUsingDemo(false);
-          setSyncing(true);
-          setLaunchView("workspace");
-          try {
-            const liveInbox = await gateway().getInbox();
-            if (cancelled) return;
-            setInboxData(liveInbox);
-            setWarning(liveInbox.warnings?.[0] ?? null);
-            setSelectedId(liveInbox.pullRequests[0]?.id ?? "");
+          const cached = readInboxCache(window.localStorage);
+          if (
+            cached &&
+            cached.viewer?.login &&
+            status.viewer?.login &&
+            cached.viewer.login === status.viewer.login
+          ) {
+            setInboxData(cached);
+            setSelectedId(cached.pullRequests[0]?.id ?? "");
+            setWarning(cached.warnings?.[0] ?? null);
             setError(null);
-          } catch (nextError) {
-            if (!cancelled) setError(messageFrom(nextError));
-          } finally {
-            if (!cancelled) {
-              setSyncing(false);
-            }
+          } else {
+            setInboxData({
+              pullRequests: [],
+              rateLimit: null,
+              syncedAt: new Date().toISOString(),
+              viewer: status.viewer ?? {
+                avatarUrl: null,
+                login: "",
+                name: null,
+              },
+            });
+            setSelectedId("");
           }
+          setUsingDemo(false);
+          setLaunchView("workspace");
+          await loadLiveInbox({ resetSelection: true });
         } else {
           setLaunchView("login");
         }
@@ -283,6 +441,10 @@ export function PrWorkspace({
     return () => {
       cancelled = true;
     };
+    // `loadLiveInbox` is intentionally not in the dependency array: the
+    // bootstrap effect is meant to run once on mount, and re-running it
+    // would re-issue the entire two-page fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -418,6 +580,20 @@ export function PrWorkspace({
     setError(null);
     setToast(null);
     setLaunchView("checking");
+    // Bump the generation so any in-flight page fetches stop writing into
+    // state. The cache is wiped because the next session may be a different
+    // viewer, and stale pull-request data must not survive disconnect.
+    inboxGenerationRef.current += 1;
+    inboxPagesRef.current = {
+      pages: [],
+      cursors: {
+        authored: { endCursor: null, hasNextPage: false },
+        assigned: { endCursor: null, hasNextPage: false },
+        reviewRequested: { endCursor: null, hasNextPage: false },
+        reviewed: { endCursor: null, hasNextPage: false },
+      },
+    };
+    clearInboxCache(window.localStorage);
     try {
       await withTimeout(gateway().disconnect());
       const nextConnection = await withTimeout(gateway().connectionStatus());
@@ -451,6 +627,19 @@ export function PrWorkspace({
     setWarning(null);
     setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
     setLaunchView("workspace");
+    // Preview mode does not need the live inbox cache. Wipe it so a future
+    // live session does not flash a stale card from another viewer.
+    inboxGenerationRef.current += 1;
+    inboxPagesRef.current = {
+      pages: [],
+      cursors: {
+        authored: { endCursor: null, hasNextPage: false },
+        assigned: { endCursor: null, hasNextPage: false },
+        reviewRequested: { endCursor: null, hasNextPage: false },
+        reviewed: { endCursor: null, hasNextPage: false },
+      },
+    };
+    clearInboxCache(window.localStorage);
   }
 
   async function openSelectedInGitHub() {
@@ -696,20 +885,50 @@ export function PrWorkspace({
               <h1>{currentView.label}</h1>
               <p>{currentView.description}</p>
             </div>
-            <button
-              aria-label="Refresh pull requests"
-              className="refresh-button"
-              disabled={syncing}
-              onClick={() => void refreshInbox()}
-              title="Refresh"
-              type="button"
-            >
-              <RefreshCw
-                aria-hidden="true"
-                className={syncing ? "spin" : ""}
-                size={16}
-              />
-            </button>
+            <div className="queue-header-actions">
+              <label
+                className="refresh-interval-select"
+                title={
+                  usingDemo
+                    ? "Preview mode keeps its own refresh cadence"
+                    : "Auto-refresh while the tab is open"
+                }
+              >
+                <Clock3 aria-hidden="true" size={13} />
+                <span className="sr-only">Auto-refresh interval</span>
+                <select
+                  aria-label="Auto-refresh interval"
+                  disabled={usingDemo}
+                  value={refreshInterval.intervalId}
+                  onChange={(event) =>
+                    refreshInterval.setIntervalId(
+                      event.target.value as typeof refreshInterval.intervalId,
+                    )
+                  }
+                >
+                  {REFRESH_INTERVAL_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      Auto: {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden="true" size={13} />
+              </label>
+              <button
+                aria-label="Refresh pull requests"
+                className="refresh-button"
+                disabled={syncing}
+                onClick={() => void refreshInbox()}
+                title="Refresh"
+                type="button"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={syncing ? "spin" : ""}
+                  size={16}
+                />
+              </button>
+            </div>
           </div>
 
           <div
@@ -766,10 +985,20 @@ export function PrWorkspace({
             <span>
               {visiblePullRequests.length} pull request
               {visiblePullRequests.length === 1 ? "" : "s"}
+              {inboxData.pullRequests.length > visiblePullRequests.length
+                ? ` of ${inboxData.pullRequests.length}`
+                : ""}
             </span>
             <span>
-              Synced {relativeTime(inboxData.syncedAt, clockNow)}
+              {loadingFirstPage
+                ? "Loading first page…"
+                : loadingSecondPage
+                  ? "Loading more pull requests…"
+                  : `Synced ${relativeTime(inboxData.syncedAt, clockNow)}`}
               {usingDemo ? " · preview" : ""}
+              {refreshInterval.intervalId !== "off"
+                ? ` · auto ${refreshLabel(refreshInterval.intervalId)}`
+                : ""}
             </span>
           </div>
 
@@ -1918,6 +2147,10 @@ function relativeTime(value: string, now: number): string {
     Math.round(difference / (24 * 60 * 60 * 1000)),
     "day",
   );
+}
+
+function refreshLabel(id: RefreshIntervalId): string {
+  return REFRESH_INTERVAL_OPTIONS.find((option) => option.id === id)?.label ?? "Off";
 }
 
 function messageFrom(error: unknown): string {

@@ -115,6 +115,7 @@ does not use D1 or R2; `.openai/hosting.json` leaves both bindings unset.
 | Diff surface | `components/diff-workspace.tsx` |
 | GitHub queries, normalization, diffs, and review mutation | `shared/github-api.mjs` |
 | Browser transport | `lib/github-gateway.ts` and `app/api/github/` |
+| Inbox cache and auto-refresh | `lib/inbox-cache.ts` and `components/use-refresh-interval.ts` |
 | Web session protection | `lib/server/github-session.ts` |
 | Preview data | `lib/demo-data.ts` |
 
@@ -128,8 +129,20 @@ PrWorkspace -> same-origin /api/github routes -> shared GitHub API module
 
 The current GitHub query fetches up to 50 open results from each of four
 viewer-relative searches: authored, assigned, review requested, and reviewed.
-It deduplicates those buckets by GitHub node ID. It is a personal PR inbox, not
-an organization-wide inventory.
+Each search runs in two pages of 25 results. The first page lands first so the
+inbox renders quickly; the second page fills in the rest in the background.
+Results are deduplicated by GitHub node ID. The most recent merged payload is
+persisted to local storage so a returning session shows a usable queue while
+the live refresh runs. The cache is cleared on disconnect or preview entry so
+no other viewer's data ever appears. It is a personal PR inbox, not an
+organization-wide inventory.
+
+### Auto-refresh
+
+A dropdown next to the manual refresh button chooses the cadence: Off, 1, 2,
+5, 15, or 30 minutes. The choice is persisted in local storage. The timer
+stops while the tab is hidden and resumes on the next visibilitychange, so
+backgrounded tabs do not hammer GitHub.
 
 ### Diff limits
 

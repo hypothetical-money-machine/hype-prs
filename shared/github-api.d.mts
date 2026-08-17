@@ -1,9 +1,22 @@
+// This file is hand-maintained alongside `github-api.mjs`. The source file
+// has no type information of its own, and the project's build does not emit
+// `.d.ts` from it. Any new export added to the source must be declared
+// here.
+//
+// The temptation to remove this file in favor of a JSR-style auto-generated
+// declaration is real; until then, keep the source file and this declaration
+// in sync.
+
 import type {
   InboxPayload,
   PullRequestActor,
   PullRequestDiff,
   ReviewEvent,
 } from "../lib/types";
+import type { InboxPage } from "../lib/inbox-page-types";
+import type { InboxPageBucketPageInfoMap } from "../lib/inbox-page-types";
+
+export type { InboxPage, InboxPageBucketPageInfoMap } from "../lib/inbox-page-types";
 
 export interface TokenSet {
   accessToken: string;
@@ -30,6 +43,7 @@ export class GitHubApiError extends Error {
 }
 
 export const INBOX_QUERY: string;
+export const INBOX_PAGE_QUERY: string;
 export const PR_FRAGMENT: string;
 
 export function getViewerWithToken(
@@ -41,6 +55,15 @@ export function loadInboxWithToken(
   token: string,
   signal?: AbortSignal,
 ): Promise<InboxPayload>;
+
+export function loadInboxPageWithToken(
+  token: string,
+  options: {
+    cursors?: Partial<Record<keyof InboxPageBucketPageInfoMap, string>>;
+    perBucket: number;
+  },
+  signal?: AbortSignal,
+): Promise<InboxPage>;
 
 export function loadPullDiffWithToken(
   token: string,

@@ -49,6 +49,16 @@ The current ranking is deliberately explainable and deterministic. It uses
 available aggregate GitHub fields; it does not claim exact thread ownership,
 required-check policy evaluation, or full timeline reconstruction.
 
+### Pagination and cache
+
+Each viewer-relative search is fetched in two pages of 25 results. The first
+page lands first and the inbox renders as soon as the first page resolves;
+the second page fills in the rest in the background and replaces the cached
+payload. The browser keeps the most recent merged inbox in local storage
+keyed by the connected viewer, so a returning session shows a usable queue
+immediately while the live refresh runs. The cache is wiped on disconnect or
+preview entry so a different viewer never sees another account's data.
+
 ## Action ranking
 
 Each pull request receives one dominant reason. Lower lane numbers rank first;
@@ -157,10 +167,12 @@ still apply.
 1. Open Hype PRs in the browser.
 2. Start in Needs attention and read the reason shown for each item.
 3. Switch among the ten implemented views or choose an explicit sort.
-4. Search by PR content or reason.
-5. Select with the pointer or use `J`/`K`; use `Command/Ctrl+K` to focus search
-   and `Option+Arrow` to move between views.
-6. Refresh manually from the UI.
+ 4. Search by PR content or reason.
+ 5. Select with the pointer or use `J`/`K`; use `Command/Ctrl+K` to focus search
+    and `Option+Arrow` to move between views.
+ 6. Refresh manually from the UI or pick an auto-refresh cadence (Off by
+    default, 1, 2, 5, 15, or 30 minutes). The choice persists in local
+    storage. Auto-refresh pauses while the tab is hidden.
 
 ### 5. Browse changed files and diffs
 
@@ -207,7 +219,8 @@ Line-level comments and suggestions are not part of this MVP.
 - Live authored, assigned, review-requested, and reviewed PR discovery.
 - Ten action and browse views described above.
 - Explainable reason chips and deterministic action ranking.
-- Search, explicit sorting, manual refresh, and keyboard navigation.
+- Search, explicit sorting, manual refresh, optional auto-refresh, and
+  keyboard navigation.
 - Pull request metadata, status summary, file tree, split/unified diff, and
   large/non-text fallback.
 - Formal pull-request review submission with summary.
@@ -326,6 +339,11 @@ fallback behavior.
     mutation checks; external navigation is limited to GitHub.
 11. With no GitHub configuration, preview mode remains fully navigable and cannot
     mutate GitHub.
+12. The inbox renders the cached local payload immediately on a returning
+    session, fetches the live first page as soon as the connection check
+    resolves, fills in the second page in the background, and lets the user
+    opt into an auto-refresh cadence (Off by default; 1, 2, 5, 15, or 30
+    minutes) that pauses while the tab is hidden.
 
 ## Implementation references
 
@@ -336,5 +354,7 @@ fallback behavior.
 - Shared GitHub transport and normalization: `shared/github-api.mjs`
 - Web session and routes: `lib/server/github-session.ts` and
   `app/api/github/`
+- Inbox cache, paginated merge, and auto-refresh cadence: `lib/inbox-cache.ts`
+  and `components/use-refresh-interval.ts`
 - Diff integration contract: `docs/DIFF_VIEWER.md`
 - Third-party obligations: `THIRD_PARTY_NOTICES.md`
