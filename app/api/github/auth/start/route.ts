@@ -1,3 +1,4 @@
+import { isSafeAppReturnPath } from "@/lib/github-pr-link";
 import {
   callbackUrl,
   getGitHubConfig,
@@ -17,6 +18,12 @@ export async function GET(request: Request) {
     );
   }
 
+  const requestedReturnTo = new URL(request.url).searchParams.get("returnTo");
+  const returnTo =
+    requestedReturnTo && isSafeAppReturnPath(requestedReturnTo)
+      ? requestedReturnTo
+      : null;
+
   const state = randomUrlSafe();
   const codeVerifier = randomUrlSafe(48);
   const codeChallenge = await sha256UrlSafe(codeVerifier);
@@ -24,6 +31,7 @@ export async function GET(request: Request) {
   await writeOAuthTransaction({
     codeVerifier,
     createdAt: new Date().toISOString(),
+    returnTo,
     state,
   });
 

@@ -2,6 +2,7 @@ import {
   exchangeAuthorizationCode,
   getViewerWithToken,
 } from "@/shared/github-api.mjs";
+import { isSafeAppReturnPath } from "@/lib/github-pr-link";
 import {
   githubAuthFailureDetails,
   type GitHubAuthStage,
@@ -25,6 +26,10 @@ export async function GET(request: Request) {
   const transactionAgeMs = transaction
     ? Date.now() - new Date(transaction.createdAt).getTime()
     : null;
+  const returnTo =
+    transaction?.returnTo && isSafeAppReturnPath(transaction.returnTo)
+      ? transaction.returnTo
+      : "/";
   const rejectionReasons = [
     error ? "github_returned_error" : null,
     !config.configured ? "server_not_configured" : null,
@@ -43,7 +48,7 @@ export async function GET(request: Request) {
       transactionAgeMs,
     });
     return Response.redirect(
-      new URL("/?connection=failed", request.url),
+      withConnectionQuery(returnTo, "failed", request.url),
       303,
     );
   }
@@ -62,7 +67,7 @@ export async function GET(request: Request) {
     stage = "write_encrypted_session";
     await writeGitHubSession({ tokenSet, viewer });
     return Response.redirect(
-      new URL("/?connection=connected", request.url),
+      withConnectionQuery(returnTo, "connected", request.url),
       303,
     );
   } catch (error) {
@@ -71,10 +76,20 @@ export async function GET(request: Request) {
       githubAuthFailureDetails(stage, error),
     );
     return Response.redirect(
-      new URL("/?connection=failed", request.url),
+      withConnectionQuery(returnTo, "failed", request.url),
       303,
     );
   }
+}
+
+function withConnectionQuery(
+  path: string,
+  connection: "connected" | "failed",
+  requestUrl: string,
+): URL {
+  const target = new URL(path, requestUrl);
+  target.searchParams.set("connection", connection);
+  return target;
 }
 
 function safeOAuthErrorCode(value: string | null): string | null {

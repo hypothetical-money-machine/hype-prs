@@ -151,6 +151,52 @@ test("switching pull requests clears the previously selected file", async () => 
   }
 });
 
+test("a deep-linked demo path selects the matching pull request", async () => {
+  const dom = installDom();
+  let cleanupDom: (() => void) | undefined;
+
+  try {
+    const { cleanup, fireEvent, render } = await import(
+      "@testing-library/react"
+    );
+    cleanupDom = cleanup;
+
+    const target = demoInbox.pullRequests[1];
+    assert.ok(target);
+    const [owner, repository] = target.repository.split("/");
+    assert.ok(owner && repository);
+
+    const view = render(
+      createElement(PrWorkspace as ComponentType<WorkspaceProps>, {
+        initialDemoInbox: demoInbox,
+        initialNow: Date.parse(demoInbox.syncedAt),
+        initialPullRequestRef: {
+          number: target.number,
+          owner,
+          repository,
+        },
+      }),
+    );
+
+    fireEvent.click(
+      await view.findByRole("button", { name: /Explore preview mode/ }),
+    );
+
+    const selected = await view.findByRole("option", {
+      name: new RegExp(target.title),
+    });
+    assert.equal(selected.getAttribute("aria-selected"), "true");
+    assert.match(view.container.textContent ?? "", /All PRs|All pull requests/i);
+  } finally {
+    try {
+      cleanupDom?.();
+    } finally {
+      dom.window.close();
+      uninstallDom();
+    }
+  }
+});
+
 test("the review dialog withholds Approve on the viewer's own pull request", async () => {
   const dom = installDom();
   let cleanupDom: (() => void) | undefined;

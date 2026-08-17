@@ -121,6 +121,26 @@ export const INBOX_QUERY = `
   }
 `;
 
+export const PULL_REQUEST_QUERY = `
+  ${PR_FRAGMENT}
+  query HypePullRequest(
+    $owner: String!
+    $name: String!
+    $number: Int!
+  ) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        ...PullRequestInboxItem
+        assignees(first: 20) {
+          nodes {
+            login
+          }
+        }
+      }
+    }
+  }
+`;
+
 export class GitHubApiError extends Error {
   constructor(
     message,
@@ -203,6 +223,163 @@ export async function loadInboxWithToken(token, signal) {
     viewer,
     canUsePartialData ? [permissionWarning(graphqlErrors)] : [],
   );
+}
+
+export async function loadPullRequestWithToken(
+  token,
+  { owner, repository, number },
+  signal,
+) {
+  validateRepositoryCoordinates({ owner, repository, number });
+  const viewer = await getViewerWithToken(token, signal);
+  const response = await githubFetch(
+    GITHUB_GRAPHQL_URL,
+    {
+      body: JSON.stringify({
+        query: PULL_REQUEST_QUERY,
+        variables: {
+          name: repository,
+          number,
+          owner,
+        },
+      }),
+      method: "POST",
+      signal,
+    },
+    token,
+  );
+  const payload = await response.json();
+  const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+  const node = payload.data?.repository?.pullRequest;
+  if (!node?.id || !node.repository?.nameWithOwner) {
+    throw classifyPullRequestLoadError(payload, graphqlErrors);
+  }
+
+  const buckets = new Set();
+  if (node.author?.login === viewer.login) buckets.add("authored");
+  const reviewRequests = node.reviewRequests?.nodes ?? [];
+  const directReview = reviewRequests.some(
+    (request) =>
+      request?.requestedReviewer?.__typename === "User" &&
+      request.requestedReviewer.login === viewer.login,
+  );
+  // Mirror the inbox path: user-review-requested:@me includes team-routed
+  // requests. Without live team membership we cannot tell which team is the
+  // viewer's, so any team request is treated as the modeled team-review case.
+  const requestedTeamPresent = reviewRequests.some(
+    (request) => request?.requestedReviewer?.__typename === "Team",
+  );
+  if (directReview || requestedTeamPresent) buckets.add("reviewRequested");
+  const assigned = (node.assignees?.nodes ?? []).some(
+    (assignee) => assignee?.login === viewer.login,
+  );
+  if (assigned) buckets.add("assigned");
+  const reviewed = (node.latestOpinionatedReviews?.nodes ?? []).some(
+    (review) => review?.author?.login === viewer.login,
+  );
+  if (reviewed) buckets.add("reviewed");
+
+  return mapPullRequest(node, buckets, viewer.login);
+}
+
+function classifyPullRequestLoadError(payload, graphqlErrors) {
+  const githubMessage =
+    graphqlErrors[0]?.message ?? "GitHub could not load that pull request.";
+  const types = graphqlErrors.map((error) =>
+    typeof error?.type === "string" ? error.type.toUpperCase() : "",
+  );
+  const messages = graphqlErrors.map((error) =>
+    typeof error?.message === "string" ? error.message : "",
+  );
+
+  if (
+    types.includes("RATE_LIMITED") ||
+    messages.some((message) => /rate limit|secondary rate/i.test(message))
+  ) {
+    return new GitHubApiError(
+      "GitHub’s API rate limit was reached. Try again after it resets.",
+      {
+        code: "github_403",
+        githubMessage,
+        status: 403,
+      },
+    );
+  }
+
+  if (
+    messages.length > 0 &&
+    messages.every(
+      (message) => message === "Resource not accessible by integration",
+    )
+  ) {
+    return new GitHubApiError(
+      "The GitHub App installation does not have access to the requested pull request data.",
+      {
+        code: "github_403",
+        githubMessage,
+        status: 403,
+      },
+    );
+  }
+
+  if (
+    types.includes("INSUFFICIENT_SCOPES") ||
+    messages.some((message) =>
+      /insufficient.?scope|saml|sso|organization access/i.test(message),
+    )
+  ) {
+    return new GitHubApiError(
+      "GitHub denied access. Check the App installation and organization approval.",
+      {
+        code: "github_403",
+        githubMessage,
+        status: 403,
+      },
+    );
+  }
+
+  // data: null is common for GraphQL-level failures. Do not treat that alone
+  // as a missing pull request — only null fields with NOT_FOUND-class errors.
+  const hasBlockingError = types.some(
+    (type) => type && type !== "NOT_FOUND",
+  );
+  const repositoryMissing =
+    payload.data != null &&
+    Object.prototype.hasOwnProperty.call(payload.data, "repository") &&
+    payload.data.repository == null;
+  const pullRequestMissing =
+    payload.data?.repository != null &&
+    Object.prototype.hasOwnProperty.call(
+      payload.data.repository,
+      "pullRequest",
+    ) &&
+    payload.data.repository.pullRequest === null;
+  const messageLooksMissing = messages.some((message) =>
+    /could not resolve|not found|does not exist/i.test(message),
+  );
+  const notFound =
+    !hasBlockingError &&
+    (types.includes("NOT_FOUND") ||
+      repositoryMissing ||
+      pullRequestMissing ||
+      messageLooksMissing);
+
+  if (notFound) {
+    return new GitHubApiError(
+      "The pull request is unavailable or the GitHub App cannot access its repository.",
+      {
+        code: "github_404",
+        githubMessage,
+        status: 404,
+      },
+    );
+  }
+
+  return new GitHubApiError(githubMessage, {
+    code: "graphql_error",
+    githubMessage,
+    status: 502,
+  });
 }
 
 export async function loadPullDiffWithToken(

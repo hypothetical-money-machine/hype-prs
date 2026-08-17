@@ -19,6 +19,7 @@ export interface GitHubSession {
 interface OAuthTransaction {
   codeVerifier: string;
   createdAt: string;
+  returnTo?: string | null;
   state: string;
 }
 

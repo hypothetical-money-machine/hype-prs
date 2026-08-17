@@ -55,6 +55,12 @@ import { ThemeToggle, useThemePreference } from "./theme-toggle";
 import { createDemoInbox, demoDiffs } from "@/lib/demo-data";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
 import {
+  appPathForPullRequest,
+  pullRequestMatchesRef,
+  pullRequestRefKey,
+  type GithubPullRequestRef,
+} from "@/lib/github-pr-link";
+import {
   countForView,
   dominantReason,
   filterForView,
@@ -112,9 +118,11 @@ const INITIAL_CONNECTION: ConnectionStatus = {
 export function PrWorkspace({
   initialDemoInbox = createDemoInbox(),
   initialNow = Date.parse(initialDemoInbox.syncedAt),
+  initialPullRequestRef = null,
 }: {
   initialDemoInbox?: InboxPayload;
   initialNow?: number;
+  initialPullRequestRef?: GithubPullRequestRef | null;
 } = {}) {
   const [activeView, setActiveView] = useState<ViewId>("needs-attention");
   const [sort, setSort] = useState<SortId>("attention");
@@ -128,8 +136,16 @@ export function PrWorkspace({
     useState<"checking" | "login" | "workspace">("checking");
   const [usingDemo, setUsingDemo] = useState(true);
   const [selectedId, setSelectedId] = useState(
-    initialDemoInbox.pullRequests[0]?.id ?? "",
+    initialPullRequestRef
+      ? ""
+      : (initialDemoInbox.pullRequests[0]?.id ?? ""),
   );
+  const deepLinkReturnTo = initialPullRequestRef
+    ? appPathForPullRequest(initialPullRequestRef)
+    : null;
+  // Stable primitive so the bootstrap effect does not re-run when the server
+  // hands a structurally identical but new object reference for the same PR.
+  const deepLinkKey = pullRequestRefKey(initialPullRequestRef);
   const [clockNow, setClockNow] = useState(initialNow);
   const [liveDiffState, setLiveDiffState] = useState<{
     diff: PullRequestDiff;
@@ -148,6 +164,13 @@ export function PrWorkspace({
   const [themePreference, setThemePreference] = useThemePreference();
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const deepLinkRef = useRef(initialPullRequestRef);
+  deepLinkRef.current = initialPullRequestRef;
+  // Id of the PR opened from the URL. Refresh only reattaches this card when
+  // it falls out of the open-inbox searches — not every merged/closed selection.
+  const pinnedDeepLinkIdRef = useRef<string | null>(null);
 
   const selectedPullRequest =
     inboxData.pullRequests.find(
@@ -211,13 +234,71 @@ export function PrWorkspace({
     setError(null);
     try {
       const next = await gateway().getInbox();
+      // Read selection after the await so a j/k or click during sync is kept.
+      const selectedAtResolve = selectedIdRef.current;
+      const selectionStillInInbox = next.pullRequests.some(
+        (pullRequest) => pullRequest.id === selectedAtResolve,
+      );
+
+      if (selectionStillInInbox) {
+        setInboxData(next);
+        setWarning(next.warnings?.[0] ?? null);
+        setSelectedId(selectedAtResolve);
+        return;
+      }
+
+      const deepLink = deepLinkRef.current;
+      const shouldRepinDeepLink =
+        Boolean(deepLink) &&
+        pinnedDeepLinkIdRef.current != null &&
+        selectedAtResolve === pinnedDeepLinkIdRef.current;
+
+      if (shouldRepinDeepLink && deepLink) {
+        try {
+          const pullRequest = await gateway().getPullRequest(deepLink);
+          // User may have moved selection while the deep-link fetch ran.
+          const selectedAfterFetch = selectedIdRef.current;
+          if (selectedAfterFetch !== selectedAtResolve) {
+            setInboxData(next);
+            setWarning(next.warnings?.[0] ?? null);
+            setSelectedId(
+              next.pullRequests.some(
+                (pullRequest) => pullRequest.id === selectedAfterFetch,
+              )
+                ? selectedAfterFetch
+                : (next.pullRequests[0]?.id ?? ""),
+            );
+            return;
+          }
+
+          pinnedDeepLinkIdRef.current = pullRequest.id;
+          setInboxData({
+            ...next,
+            pullRequests: [
+              pullRequest,
+              ...next.pullRequests.filter(
+                (item) => item.id !== pullRequest.id,
+              ),
+            ],
+          });
+          setWarning(next.warnings?.[0] ?? null);
+          setSelectedId(pullRequest.id);
+          return;
+        } catch (deepLinkError) {
+          pinnedDeepLinkIdRef.current = null;
+          setInboxData(next);
+          setWarning(next.warnings?.[0] ?? null);
+          setSelectedId(next.pullRequests[0]?.id ?? "");
+          setError(messageFrom(deepLinkError));
+          return;
+        }
+      }
+
+      // Selection left the open inbox (merged/closed/etc.) and was not the
+      // deep-linked pin — drop it instead of keeping a ghost card.
       setInboxData(next);
       setWarning(next.warnings?.[0] ?? null);
-      setSelectedId((current) =>
-        next.pullRequests.some((pullRequest) => pullRequest.id === current)
-          ? current
-          : (next.pullRequests[0]?.id ?? ""),
-      );
+      setSelectedId(next.pullRequests[0]?.id ?? "");
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -258,10 +339,23 @@ export function PrWorkspace({
           try {
             const liveInbox = await gateway().getInbox();
             if (cancelled) return;
-            setInboxData(liveInbox);
-            setWarning(liveInbox.warnings?.[0] ?? null);
-            setSelectedId(liveInbox.pullRequests[0]?.id ?? "");
-            setError(null);
+            const opened = await openTargetPullRequest(
+              liveInbox,
+              deepLinkRef.current,
+            );
+            if (cancelled) return;
+            pinnedDeepLinkIdRef.current = opened.focusedDeepLink
+              ? opened.selectedId || null
+              : null;
+            setInboxData(opened.inbox);
+            setWarning(opened.inbox.warnings?.[0] ?? null);
+            setSelectedId(opened.selectedId);
+            if (opened.focusedDeepLink) {
+              setActiveView("all");
+              setSort("recent");
+              setMobilePane("detail");
+            }
+            setError(opened.error);
           } catch (nextError) {
             if (!cancelled) setError(messageFrom(nextError));
           } finally {
@@ -283,7 +377,7 @@ export function PrWorkspace({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [deepLinkKey]);
 
   useEffect(() => {
     if (!selectedPullRequest || usingDemo) return;
@@ -411,7 +505,7 @@ export function PrWorkspace({
       setConnectionDialog(true);
       return;
     }
-    beginWebConnection();
+    beginWebConnection(deepLinkReturnTo ?? undefined);
   }
 
   async function disconnect() {
@@ -430,6 +524,7 @@ export function PrWorkspace({
       // as live and request their diffs against a session that is now gone.
       setInboxData(EMPTY_INBOX);
       setWarning(null);
+      pinnedDeepLinkIdRef.current = null;
       setSelectedId("");
       setLiveDiffState({
         diff: EMPTY_DIFF,
@@ -445,11 +540,32 @@ export function PrWorkspace({
   }
 
   function enterPreview() {
-    setError(null);
     setUsingDemo(true);
     setInboxData(initialDemoInbox);
     setWarning(null);
-    setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
+    if (initialPullRequestRef) {
+      const match = initialDemoInbox.pullRequests.find((pullRequest) =>
+        pullRequestMatchesRef(pullRequest, initialPullRequestRef),
+      );
+      if (match) {
+        pinnedDeepLinkIdRef.current = match.id;
+        setSelectedId(match.id);
+        setActiveView("all");
+        setSort("recent");
+        setMobilePane("detail");
+        setError(null);
+      } else {
+        pinnedDeepLinkIdRef.current = null;
+        setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
+        setError(
+          "Preview mode cannot open that GitHub pull request. Connect GitHub to view it live.",
+        );
+      }
+    } else {
+      pinnedDeepLinkIdRef.current = null;
+      setSelectedId(initialDemoInbox.pullRequests[0]?.id ?? "");
+      setError(null);
+    }
     setLaunchView("workspace");
   }
 
@@ -1918,6 +2034,60 @@ function messageFrom(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Something went wrong. Try again.";
+}
+
+async function openTargetPullRequest(
+  inbox: InboxPayload,
+  target: GithubPullRequestRef | null,
+): Promise<{
+  error: string | null;
+  focusedDeepLink: boolean;
+  inbox: InboxPayload;
+  selectedId: string;
+}> {
+  if (!target) {
+    return {
+      error: null,
+      focusedDeepLink: false,
+      inbox,
+      selectedId: inbox.pullRequests[0]?.id ?? "",
+    };
+  }
+
+  const existing = inbox.pullRequests.find((pullRequest) =>
+    pullRequestMatchesRef(pullRequest, target),
+  );
+  if (existing) {
+    return {
+      error: null,
+      focusedDeepLink: true,
+      inbox,
+      selectedId: existing.id,
+    };
+  }
+
+  try {
+    const pullRequest = await gateway().getPullRequest(target);
+    return {
+      error: null,
+      focusedDeepLink: true,
+      inbox: {
+        ...inbox,
+        pullRequests: [
+          pullRequest,
+          ...inbox.pullRequests.filter((item) => item.id !== pullRequest.id),
+        ],
+      },
+      selectedId: pullRequest.id,
+    };
+  } catch (error) {
+    return {
+      error: messageFrom(error),
+      focusedDeepLink: false,
+      inbox,
+      selectedId: inbox.pullRequests[0]?.id ?? "",
+    };
+  }
 }
 
 // A stalled request never settles on its own, so bound the calls that gate the

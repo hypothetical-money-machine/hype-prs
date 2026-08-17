@@ -7,6 +7,7 @@ import {
   getViewerWithToken,
   loadInboxWithToken,
   loadPullDiffWithToken,
+  loadPullRequestWithToken,
   refreshUserToken,
   submitReviewWithToken,
 } from "../shared/github-api.mjs";
@@ -362,6 +363,184 @@ test("a rejected review explains why instead of saying Unprocessable Entity", as
         error.status === 422 &&
         error.message ===
           "Unprocessable Entity: Can not approve your own pull request",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+function singlePullRequestPayload({
+  reviewRequests = [
+    {
+      requestedReviewer: {
+        __typename: "User",
+        login: "morgan",
+      },
+    },
+  ],
+} = {}) {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          additions: 4,
+          author: { avatarUrl: null, login: "ada", name: "Ada" },
+          baseRefName: "main",
+          changedFiles: 1,
+          comments: { totalCount: 0 },
+          commits: {
+            nodes: [
+              {
+                commit: {
+                  oid: CURRENT_HEAD,
+                  statusCheckRollup: { state: "SUCCESS" },
+                },
+              },
+            ],
+          },
+          createdAt: "2026-07-01T00:00:00.000Z",
+          deletions: 1,
+          headRefName: "feature",
+          headRefOid: CURRENT_HEAD,
+          id: "PR_deep",
+          isDraft: false,
+          labels: { nodes: [] },
+          latestOpinionatedReviews: { nodes: [] },
+          mergeable: "MERGEABLE",
+          number: 187,
+          repository: {
+            nameWithOwner: "hypothetical-money-machine/hype-comms",
+          },
+          reviewDecision: "REVIEW_REQUIRED",
+          reviewRequests: { nodes: reviewRequests },
+          assignees: { nodes: [] },
+          title: "Deep linked pull request",
+          updatedAt: "2026-07-02T00:00:00.000Z",
+          url: "https://github.com/hypothetical-money-machine/hype-comms/pull/187",
+        },
+      },
+    },
+  };
+}
+
+function mockViewerThenGraphql(payload: unknown) {
+  return async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    return Response.json(payload);
+  };
+}
+
+test("loads a single pull request by repository coordinates", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockViewerThenGraphql(singlePullRequestPayload());
+
+  try {
+    const pullRequest = await loadPullRequestWithToken("secret-token", {
+      number: 187,
+      owner: "hypothetical-money-machine",
+      repository: "hype-comms",
+    });
+    assert.equal(pullRequest.id, "PR_deep");
+    assert.equal(pullRequest.number, 187);
+    assert.equal(
+      pullRequest.repository,
+      "hypothetical-money-machine/hype-comms",
+    );
+    assert.equal(pullRequest.viewerRelationship, "REVIEW_REQUESTED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("single pull request loads preserve team review requests", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockViewerThenGraphql(
+    singlePullRequestPayload({
+      reviewRequests: [
+        {
+          requestedReviewer: {
+            __typename: "Team",
+            name: "Platform",
+            slug: "platform",
+          },
+        },
+      ],
+    }),
+  );
+
+  try {
+    const pullRequest = await loadPullRequestWithToken("secret-token", {
+      number: 187,
+      owner: "hypothetical-money-machine",
+      repository: "hype-comms",
+    });
+    assert.equal(pullRequest.viewerRelationship, "TEAM_REVIEW_REQUESTED");
+    assert.equal(pullRequest.teamReviewRequested, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("single pull request load does not report rate limits as not found", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockViewerThenGraphql({
+    data: null,
+    errors: [
+      {
+        message: "API rate limit exceeded",
+        type: "RATE_LIMITED",
+      },
+    ],
+  });
+
+  try {
+    await assert.rejects(
+      loadPullRequestWithToken("secret-token", {
+        number: 187,
+        owner: "hypothetical-money-machine",
+        repository: "hype-comms",
+      }),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.status === 403 &&
+        error.code === "github_403" &&
+        /rate limit/i.test(error.message),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("single pull request load reports a missing repository as not found", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockViewerThenGraphql({
+    data: { repository: null },
+    errors: [
+      {
+        message: "Could not resolve to a Repository with the name 'x/y'.",
+        type: "NOT_FOUND",
+      },
+    ],
+  });
+
+  try {
+    await assert.rejects(
+      loadPullRequestWithToken("secret-token", {
+        number: 187,
+        owner: "hypothetical-money-machine",
+        repository: "hype-comms",
+      }),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.status === 404 &&
+        error.code === "github_404",
     );
   } finally {
     globalThis.fetch = originalFetch;

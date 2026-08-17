@@ -131,6 +131,13 @@ directly to their live workspace. The launch screen also offers an explicit
 **Explore preview mode** action that enters the full interface with synthetic
 data and no GitHub authorization.
 
+GitHub pull request URLs can be opened in Hype PRs by swapping the host while
+keeping the path, for example
+`https://hype-prs.com/owner/repo/pull/123/changes`. The app normalizes tab
+suffixes to `/owner/repo/pull/123`, selects that pull request in the workspace,
+and loads it even when it is outside the default inbox searches. Completing
+GitHub authorization from a deep link returns to the same path.
+
 ### 2. Explore in demo mode
 
 With no GitHub App configuration, the full shared UI loads synthetic pull

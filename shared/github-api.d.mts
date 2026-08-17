@@ -2,6 +2,7 @@ import type {
   InboxPayload,
   PullRequestActor,
   PullRequestDiff,
+  PullRequestSummary,
   ReviewEvent,
 } from "../lib/types";
 
@@ -31,6 +32,7 @@ export class GitHubApiError extends Error {
 
 export const INBOX_QUERY: string;
 export const PR_FRAGMENT: string;
+export const PULL_REQUEST_QUERY: string;
 
 export function getViewerWithToken(
   token: string,
@@ -41,6 +43,12 @@ export function loadInboxWithToken(
   token: string,
   signal?: AbortSignal,
 ): Promise<InboxPayload>;
+
+export function loadPullRequestWithToken(
+  token: string,
+  input: { number: number; owner: string; repository: string },
+  signal?: AbortSignal,
+): Promise<PullRequestSummary>;
 
 export function loadPullDiffWithToken(
   token: string,

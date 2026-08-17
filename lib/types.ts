@@ -127,6 +127,14 @@ export interface GitHubBridge {
   connectionStatus(): Promise<ConnectionStatus>;
   disconnect(): Promise<void>;
   getInbox(): Promise<InboxPayload>;
+  getPullRequest(
+    input: {
+      number: number;
+      owner: string;
+      repository: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<PullRequestSummary>;
   getPullDiff(input: {
     number: number;
     owner: string;

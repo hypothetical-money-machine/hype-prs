@@ -12,10 +12,14 @@ export function gateway(): GitHubBridge {
   return webGateway;
 }
 
-export function beginWebConnection(): void {
-  if (typeof window !== "undefined") {
-    window.location.assign("/api/github/auth/start");
+export function beginWebConnection(returnTo?: string): void {
+  if (typeof window === "undefined") return;
+  if (returnTo) {
+    const search = new URLSearchParams({ returnTo });
+    window.location.assign(`/api/github/auth/start?${search}`);
+    return;
   }
+  window.location.assign("/api/github/auth/start");
 }
 
 const webGateway: GitHubBridge = {
@@ -29,6 +33,15 @@ const webGateway: GitHubBridge = {
 
   async getInbox(): Promise<InboxPayload> {
     return requestJson<InboxPayload>("/api/github/inbox");
+  },
+
+  async getPullRequest(input, signal) {
+    const search = new URLSearchParams({
+      number: String(input.number),
+      owner: input.owner,
+      repository: input.repository,
+    });
+    return requestJson(`/api/github/pull?${search}`, { signal });
   },
 
   async getPullDiff(input, signal): Promise<PullRequestDiff> {

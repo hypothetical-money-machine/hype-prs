@@ -38,6 +38,13 @@ npm run dev
 Open <http://localhost:3000>. The app remains in demo mode until a GitHub App is
 configured and connected.
 
+To open a specific pull request, swap `github.com` for the Hype PRs host and keep
+the path, for example
+`http://localhost:3000/owner/repo/pull/123/changes`. Tab suffixes such as
+`/changes` or `/files` redirect to `/owner/repo/pull/123`. When GitHub is
+connected, the workspace selects that pull request and loads its diff even if it
+is outside the default inbox searches.
+
 ## Configure live GitHub access
 
 Hype PRs uses a GitHub App. It does not accept a personal access token in the

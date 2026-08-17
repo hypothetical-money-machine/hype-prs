@@ -38,7 +38,7 @@ test("web session keeps credentials server-side and preserves rotated refresh to
 });
 
 test("session-backed routes answer a failed refresh with a structured error", async () => {
-  const names = ["inbox", "diff", "review", "status"];
+  const names = ["inbox", "diff", "pull", "review", "status"];
   const sources = await Promise.all(
     names.map((name) =>
       readFile(new URL(`app/api/github/${name}/route.ts`, root), "utf8"),
