@@ -22,7 +22,7 @@ test("web session keeps credentials server-side and preserves rotated refresh to
   );
   assert.ok(
     connectedBootstrap.indexOf('setLaunchView("workspace")') <
-      connectedBootstrap.indexOf("await gateway().getInbox()"),
+      connectedBootstrap.indexOf("loadLiveInbox("),
     "connected sessions must leave the restoring view before loading the inbox",
   );
 

@@ -1,3 +1,9 @@
+import {
+  hasUsableInboxData,
+  mapInboxPayload,
+  permissionWarning,
+} from "./inbox-mapping.mjs";
+
 const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_GRAPHQL_URL = `${GITHUB_API_URL}/graphql`;
 const GITHUB_LOGIN_URL = "https://github.com/login";
@@ -53,6 +59,85 @@ export const PR_FRAGMENT = `
   }
 `;
 
+// The mapping helpers in `inbox-mapping.mjs` derive the lane, the reason
+// chips, and the "you are assigned / review requested" relationship from
+// extra fields that the cheap inbox fragment above does not request. The
+// paginated inbox query asks for them, at the cost of a larger query cost
+// per page.
+export const PR_DETAIL_FRAGMENT = `
+  fragment PullRequestInboxItemDetail on PullRequest {
+    additions
+    author {
+      avatarUrl
+      login
+      ... on User {
+        name
+      }
+    }
+    baseRefName
+    changedFiles
+    commits(last: 1) {
+      nodes {
+        commit {
+          oid
+          statusCheckRollup {
+            state
+          }
+        }
+      }
+    }
+    comments {
+      totalCount
+    }
+    createdAt
+    deletions
+    headRefName
+    headRefOid
+    id
+    isDraft
+    labels(first: 100) {
+      nodes {
+        name
+      }
+    }
+    latestOpinionatedReviews(first: 20) {
+      nodes {
+        author {
+          login
+        }
+        commit {
+          oid
+        }
+        state
+        submittedAt
+      }
+    }
+    mergeable
+    number
+    repository {
+      nameWithOwner
+    }
+    reviewDecision
+    reviewRequests(first: 20) {
+      nodes {
+        requestedReviewer {
+          __typename
+          ... on Team {
+            name
+            slug
+          }
+          ... on User {
+            login
+          }
+        }
+      }
+    }
+    title
+    updatedAt
+    url
+  }
+`;
+
 export const INBOX_QUERY = `
   ${PR_FRAGMENT}
   query HypePullRequestInbox(
@@ -84,6 +169,93 @@ export const INBOX_QUERY = `
     reviewed: search(type: ISSUE, query: $reviewedQuery, first: ${MAX_INBOX_RESULTS_PER_BUCKET}) {
       nodes {
         ...PullRequestInboxItem
+      }
+    }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
+  }
+`;
+
+// GitHub's `search` connection is Relay-style and only accepts `first`/`after`
+// (or `last`/`before`). `offset` is not a valid argument and a request that
+// includes it is rejected with a document validation error before the server
+// runs any of the search aliases. Page 2 is therefore a follow-up that passes
+// each bucket's end cursor from page 1.
+export const INBOX_PAGE_QUERY = `
+  ${PR_DETAIL_FRAGMENT}
+  query HypePullRequestInboxPage(
+    $authoredQuery: String!
+    $assignedQuery: String!
+    $reviewQuery: String!
+    $reviewedQuery: String!
+    $perBucket: Int!
+    $authoredAfter: String
+    $assignedAfter: String
+    $reviewAfter: String
+    $reviewedAfter: String
+  ) {
+    viewer {
+      avatarUrl
+      login
+      name
+    }
+    authored: search(
+      type: ISSUE
+      query: $authoredQuery
+      first: $perBucket
+      after: $authoredAfter
+    ) {
+      nodes {
+        ...PullRequestInboxItem
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+    assigned: search(
+      type: ISSUE
+      query: $assignedQuery
+      first: $perBucket
+      after: $assignedAfter
+    ) {
+      nodes {
+        ...PullRequestInboxItem
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+    reviewRequested: search(
+      type: ISSUE
+      query: $reviewQuery
+      first: $perBucket
+      after: $reviewAfter
+    ) {
+      nodes {
+        ...PullRequestInboxItem
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+    reviewed: search(
+      type: ISSUE
+      query: $reviewedQuery
+      first: $perBucket
+      after: $reviewedAfter
+    ) {
+      nodes {
+        ...PullRequestInboxItem
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
       }
     }
     rateLimit {
@@ -177,6 +349,102 @@ export async function loadInboxWithToken(token, signal) {
     viewer,
     canUsePartialData ? [permissionWarning(graphqlErrors)] : [],
   );
+}
+
+// Returns the raw GraphQL response for one paginated slice of the inbox:
+// the four bucket node lists, the per-bucket `pageInfo`, the viewer, and the
+// rate limit. Mapping and bucket deduplication happen on the client (or on
+// whichever caller assembles the full inbox), so a PR that appears in two
+// buckets across two pages keeps the bucket membership it earned in both.
+export async function loadInboxPageWithToken(
+  token,
+  { perBucket, cursors = {} },
+  signal,
+) {
+  const viewer = await getViewerWithToken(token, signal);
+  const variables = {
+    authoredQuery: `is:pull-request is:open author:${viewer.login} archived:false sort:updated-desc`,
+    assignedQuery: `is:pull-request is:open assignee:${viewer.login} archived:false sort:updated-desc`,
+    reviewQuery:
+      "is:pull-request is:open user-review-requested:@me archived:false sort:updated-desc",
+    reviewedQuery: `is:pull-request is:open reviewed-by:${viewer.login} archived:false sort:updated-desc`,
+    perBucket,
+    authoredAfter: cursors.authored ?? null,
+    assignedAfter: cursors.assigned ?? null,
+    reviewAfter: cursors.reviewRequested ?? null,
+    reviewedAfter: cursors.reviewed ?? null,
+  };
+
+  const response = await githubFetch(
+    GITHUB_GRAPHQL_URL,
+    {
+      body: JSON.stringify({ query: INBOX_PAGE_QUERY, variables }),
+      method: "POST",
+      signal,
+    },
+    token,
+    { retryable: true },
+  );
+  const payload = await response.json();
+  const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+  const permissionDenied =
+    graphqlErrors.length > 0 &&
+    graphqlErrors.every(
+      (error) => error?.message === "Resource not accessible by integration",
+    );
+  const canUsePartialData =
+    permissionDenied && hasUsableInboxData(payload.data);
+  if (graphqlErrors.length > 0 && !canUsePartialData) {
+    const githubMessage =
+      graphqlErrors[0]?.message ??
+      "GitHub could not load the pull request inbox.";
+    throw new GitHubApiError(
+      permissionDenied
+        ? "The GitHub App installation does not have access to the requested pull request data."
+        : githubMessage,
+      {
+        code: permissionDenied ? "github_403" : "graphql_error",
+        githubMessage,
+        status: permissionDenied ? 403 : 502,
+      },
+    );
+  }
+
+  return {
+    buckets: {
+      authored: payload.data?.authored?.nodes ?? [],
+      assigned: payload.data?.assigned?.nodes ?? [],
+      reviewRequested: payload.data?.reviewRequested?.nodes ?? [],
+      reviewed: payload.data?.reviewed?.nodes ?? [],
+    },
+    pageInfo: {
+      authored: payload.data?.authored?.pageInfo ?? {
+        endCursor: null,
+        hasNextPage: false,
+      },
+      assigned: payload.data?.assigned?.pageInfo ?? {
+        endCursor: null,
+        hasNextPage: false,
+      },
+      reviewRequested: payload.data?.reviewRequested?.pageInfo ?? {
+        endCursor: null,
+        hasNextPage: false,
+      },
+      reviewed: payload.data?.reviewed?.pageInfo ?? {
+        endCursor: null,
+        hasNextPage: false,
+      },
+    },
+    rateLimit: payload.data?.rateLimit
+      ? {
+          cost: payload.data.rateLimit.cost,
+          remaining: payload.data.rateLimit.remaining,
+          resetAt: payload.data.rateLimit.resetAt,
+        }
+      : null,
+    viewer,
+    warnings: canUsePartialData ? [permissionWarning(graphqlErrors)] : [],
+  };
 }
 
 export async function loadPullDiffWithToken(
@@ -410,128 +678,6 @@ export function publicError(error) {
     code: "unexpected_error",
     message: "Something went wrong while contacting GitHub.",
     status: 500,
-  };
-}
-
-function mapInboxPayload(data, viewer, warnings = []) {
-  const buckets = [
-    ["authored", data.authored?.nodes ?? []],
-    ["assigned", data.assigned?.nodes ?? []],
-    ["reviewRequested", data.reviewRequested?.nodes ?? []],
-    ["reviewed", data.reviewed?.nodes ?? []],
-  ];
-  const indexed = new Map();
-
-  for (const [bucket, nodes] of buckets) {
-    for (const node of nodes) {
-      // Degraded permission data can omit the repository. Such a card can
-      // never load a diff or accept a review, so drop it rather than render a
-      // card whose diff pane would spin forever; the warning still surfaces.
-      if (!node?.id || !node.repository?.nameWithOwner) continue;
-      const existing = indexed.get(node.id) ?? { buckets: new Set(), node };
-      existing.buckets.add(bucket);
-      indexed.set(node.id, existing);
-    }
-  }
-
-  const pullRequests = [...indexed.values()].map(({ node, buckets }) =>
-    mapPullRequest(node, buckets, viewer.login),
-  );
-
-  return {
-    pullRequests,
-    rateLimit: data.rateLimit
-      ? {
-          cost: data.rateLimit.cost,
-          remaining: data.rateLimit.remaining,
-          resetAt: data.rateLimit.resetAt,
-        }
-      : null,
-    syncedAt: new Date().toISOString(),
-    viewer,
-    ...(warnings.length > 0 ? { warnings } : {}),
-  };
-}
-
-function hasUsableInboxData(data) {
-  return ["authored", "assigned", "reviewRequested", "reviewed"].some(
-    (bucket) => Array.isArray(data?.[bucket]?.nodes),
-  );
-}
-
-function permissionWarning(errors) {
-  const fields = [
-    ...new Set(
-      errors
-        .map((error) =>
-          Array.isArray(error?.path) ? error.path.at(-1) : null,
-        )
-        .filter((field) => typeof field === "string"),
-    ),
-  ];
-  const detail =
-    fields.length > 0 ? ` GitHub denied: ${fields.join(", ")}.` : "";
-  return `Some pull request details are unavailable.${detail} Approve the GitHub App’s requested repository permissions to restore them.`;
-}
-
-function mapPullRequest(node, buckets, viewerLogin) {
-  const reviews = (node.latestOpinionatedReviews?.nodes ?? []).filter(
-    (review) => review?.author?.login === viewerLogin,
-  );
-  const viewerReview = reviews
-    .slice()
-    .sort(
-      (left, right) =>
-        new Date(right.submittedAt).getTime() -
-        new Date(left.submittedAt).getTime(),
-    )[0];
-  const commit = node.commits?.nodes?.[0]?.commit;
-  const authored = buckets.has("authored") || node.author?.login === viewerLogin;
-
-  let viewerRelationship = "PARTICIPATING";
-  if (authored) viewerRelationship = "AUTHOR";
-  // The `user-review-requested:@me` search bucket is GitHub's authoritative
-  // direct-review signal. Reading PullRequest.reviewRequests separately is
-  // both redundant and not available to every valid App installation.
-  else if (buckets.has("reviewRequested")) {
-    viewerRelationship = "REVIEW_REQUESTED";
-  } else if (buckets.has("assigned")) {
-    viewerRelationship = "ASSIGNED";
-  }
-
-  return {
-    additions: node.additions ?? 0,
-    author: {
-      avatarUrl: node.author?.avatarUrl ?? null,
-      login: node.author?.login ?? "ghost",
-      name: node.author?.name ?? null,
-    },
-    baseRefName: node.baseRefName ?? "",
-    changedFiles: node.changedFiles ?? 0,
-    checkState: normalizeCheckState(commit?.statusCheckRollup?.state),
-    commentCount: node.comments?.totalCount ?? 0,
-    createdAt: node.createdAt,
-    deletions: node.deletions ?? 0,
-    headRefName: node.headRefName ?? "",
-    headSha: node.headRefOid ?? commit?.oid ?? "",
-    id: node.id,
-    isDraft: Boolean(node.isDraft),
-    labels: (node.labels?.nodes ?? []).map((label) => label.name),
-    lastMeaningfulActivityAt: node.updatedAt,
-    mergeState: normalizeMergeState(node.mergeable),
-    mentionsViewer: false,
-    number: node.number,
-    repository: node.repository?.nameWithOwner ?? "",
-    reviewDecision: node.reviewDecision ?? null,
-    reviewRequestedAt: null,
-    teamReviewRequested: false,
-    title: node.title,
-    updatedAt: node.updatedAt,
-    url: node.url,
-    viewerLastReviewCommitSha: viewerReview?.commit?.oid ?? null,
-    viewerLastReviewAt: viewerReview?.submittedAt ?? null,
-    viewerRelationship,
-    viewerReviewState: viewerReview?.state ?? null,
   };
 }
 
@@ -849,19 +995,6 @@ function normalizeTokenSet(payload) {
       : null,
     tokenType: payload.token_type ?? "bearer",
   };
-}
-
-function normalizeCheckState(state) {
-  if (state === "SUCCESS") return "SUCCESS";
-  if (state === "FAILURE" || state === "ERROR") return "FAILURE";
-  if (state === "PENDING" || state === "EXPECTED") return "PENDING";
-  return "NEUTRAL";
-}
-
-function normalizeMergeState(state) {
-  if (state === "MERGEABLE") return "MERGEABLE";
-  if (state === "CONFLICTING") return "CONFLICTING";
-  return "UNKNOWN";
 }
 
 function validateRepositoryCoordinates({ owner, repository, number }) {
