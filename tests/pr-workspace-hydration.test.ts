@@ -32,11 +32,11 @@ test("the initial workspace render is deterministic across elapsed time", () => 
     );
 
     assert.equal(hydrationHtml, serverHtml);
-    assert.match(serverHtml, /Restoring your session/);
+    assert.match(serverHtml, /Checking your GitHub connection/);
     assert.match(serverHtml, /<legend[^>]*>Appearance<\/legend>/);
     assert.doesNotMatch(serverHtml, /\bchecked=""/);
     assert.doesNotMatch(serverHtml, /Welcome to Hype/);
-    assert.doesNotMatch(serverHtml, /Explore preview mode/);
+    assert.doesNotMatch(serverHtml, /Explore preview/);
     assert.doesNotMatch(serverHtml, /Last synced/);
   } finally {
     Date.now = originalNow;

@@ -13,7 +13,7 @@ export function notConnected(): Response {
     {
       error: {
         code: "not_connected",
-        message: "Connect an approved GitHub App to continue.",
+        message: "Connect GitHub to continue.",
       },
     },
     { status: 401 },

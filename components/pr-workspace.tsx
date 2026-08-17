@@ -203,7 +203,7 @@ export function PrWorkspace({
         syncedAt: new Date().toISOString(),
       });
       setWarning(null);
-      setToast("Demo data refreshed");
+      setToast("Preview data refreshed");
       return;
     }
 
@@ -487,7 +487,7 @@ export function PrWorkspace({
         ),
       }));
       setReviewOpen(false);
-      setToast(`${reviewEventLabel(event)} recorded in demo mode`);
+      setToast(`${reviewEventLabel(event)} saved in preview mode`);
       return;
     }
 
@@ -497,7 +497,7 @@ export function PrWorkspace({
       !displayedDiff.baseSha
     ) {
       throw new Error(
-        "The current comparison is still loading or changed. Review it again before submitting.",
+        "The comparison is still loading or changed. Reload it before submitting.",
       );
     }
 
@@ -579,7 +579,7 @@ export function PrWorkspace({
             </span>
           </div>
 
-          <div className="sidebar-section-label">Action</div>
+          <div className="sidebar-section-label">Triage</div>
           <nav className="view-nav" aria-label="Pull request views">
             {viewDefinitions.slice(0, 7).map((view) => (
               <ViewButton
@@ -619,13 +619,13 @@ export function PrWorkspace({
           <div className="policy-note">
             <ShieldCheck aria-hidden="true" size={16} />
             <p>
-              Hype PRs is another GitHub client. Organization and managed-device
-              policies still apply.
+              Hype PRs is another GitHub client. Your organization and
+              managed-device policies still apply.
             </p>
           </div>
           {!connection.connected && (
             <button
-              aria-label="Connect an approved GitHub App for your live queue"
+              aria-label="Connect GitHub to load your live queue"
               className="connect-banner"
               onClick={() => void startConnection()}
               title="Connect GitHub"
@@ -634,7 +634,7 @@ export function PrWorkspace({
               <span className="live-dot" />
               <span>
                 <strong>Connect GitHub</strong>
-                Demo mode · Use an approved GitHub App for your live queue
+                Preview mode · Load your live queue with GitHub
               </span>
               <ArrowUpRight aria-hidden="true" size={16} />
             </button>
@@ -654,10 +654,10 @@ export function PrWorkspace({
               <strong>
                 {connection.connected
                   ? (connection.viewer?.login ?? "GitHub")
-                  : "Demo workspace"}
+                  : "Preview workspace"}
               </strong>
               <small>
-                {connection.connected ? "GitHub App" : "Synthetic data"}
+                {connection.connected ? "Live GitHub data" : "Preview data"}
               </small>
             </span>
             <button
@@ -690,8 +690,8 @@ export function PrWorkspace({
             <div>
               <span className="eyebrow">
                 {activeView === "needs-attention"
-                  ? "Your action queue"
-                  : "Pull request view"}
+                  ? "Triage queue"
+                  : "Current view"}
               </span>
               <h1>{currentView.label}</h1>
               <p>{currentView.description}</p>
@@ -740,7 +740,7 @@ export function PrWorkspace({
               <span className="sr-only">Search pull requests</span>
               <input
                 ref={searchRef}
-                placeholder="Search title, repo, author, reason…"
+                placeholder="Search title, repository, author, or reason…"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -753,8 +753,8 @@ export function PrWorkspace({
                 value={sort}
                 onChange={(event) => setSort(event.target.value as SortId)}
               >
-                <option value="attention">Action priority</option>
-                <option value="recent">Recently active</option>
+                <option value="attention">Priority</option>
+                <option value="recent">Recent activity</option>
                 <option value="oldest">Oldest created</option>
                 <option value="updated">Last updated</option>
               </select>
@@ -768,8 +768,8 @@ export function PrWorkspace({
               {visiblePullRequests.length === 1 ? "" : "s"}
             </span>
             <span>
-              Last synced {relativeTime(inboxData.syncedAt, clockNow)}
-              {usingDemo ? " · demo" : ""}
+              Synced {relativeTime(inboxData.syncedAt, clockNow)}
+              {usingDemo ? " · preview" : ""}
             </span>
           </div>
 
@@ -835,11 +835,11 @@ export function PrWorkspace({
             ) : (
               <div className="empty-queue">
                 <CheckCircle2 aria-hidden="true" size={28} />
-                <strong>Nothing in this view</strong>
+                <strong>No pull requests here</strong>
                 <p>
                   {query
                     ? "Try a broader search."
-                    : "You are clear for now. Another view may have context."}
+                    : "Nothing needs your attention right now. Try another view for more context."}
                 </p>
               </div>
             )}
@@ -891,7 +891,7 @@ export function PrWorkspace({
           ) : (
             <div className="empty-detail">
               <GitPullRequest aria-hidden="true" size={32} />
-              <strong>Select a pull request</strong>
+              <strong>Choose a pull request to see its files and diff</strong>
             </div>
           )}
         </section>
@@ -942,7 +942,7 @@ function WindowBar({
       </div>
       <div className="window-actions">
         {showSearchShortcut && (
-          <span className="window-shortcut">⌘K search</span>
+          <span className="window-shortcut">⌘K to search</span>
         )}
         <ThemeToggle
           onChange={onThemeChange}
@@ -1004,7 +1004,7 @@ function DiffWorkspaceFallback({
           <span />
           <span />
           <span />
-          <p>Loading changed files…</p>
+          <p>Loading diff…</p>
         </div>
       </div>
     </div>
@@ -1020,7 +1020,7 @@ function LaunchChecking() {
           H
         </div>
         <LoaderCircle aria-hidden="true" className="spin" size={22} />
-        <h1 id="launch-checking-title">Restoring your session…</h1>
+        <h1 id="launch-checking-title">Checking your GitHub connection…</h1>
       </div>
     </section>
   );
@@ -1028,24 +1028,24 @@ function LaunchChecking() {
 
 const MARKETING_FEATURES = [
   {
-    body: "Open with the pull requests that need you now, ordered by obligation — review requests, failing checks, conflicts, and work ready to ship.",
+    body: "Open with the pull requests that need you now, ordered by urgency — review requests, failing checks, conflicts, and work ready to ship.",
     icon: Inbox,
-    title: "Action-first inbox",
+    title: "A queue for what needs you",
   },
   {
-    body: "Every row carries a reason chip, a plain-language explanation, and a timestamp. No mystery about why a pull request is where it is.",
+    body: "Every row carries a reason, a plain-language explanation, and a timestamp. You always know why a pull request is here.",
     icon: Zap,
     title: "Explainable ranking",
   },
   {
     body: "A directory-first file tree, path filtering, and virtualized split or unified diffs — all in one surface, without leaving the queue.",
     icon: Layers,
-    title: "Files and diffs in place",
+    title: "Files and diffs together",
   },
   {
-    body: "Comment, approve, or request changes with a summary. Hype PRs re-checks the exact commits before it submits, so reviews land safe.",
+    body: "Comment, approve, or request changes with a summary. Hype PRs re-checks the exact commits before submitting a review.",
     icon: GitPullRequest,
-    title: "Formal reviews",
+    title: "Review without switching tools",
   },
   {
     body: "Skip the mouse. J/K to move, Option+Arrow to switch views, and Command or Control+K to jump to search.",
@@ -1077,12 +1077,12 @@ const MARKETING_FAQ = [
   },
   {
     answer:
-      "Preview mode loads a full workspace with synthetic pull requests and diffs. You can explore every view, search, read diffs, and practice submitting reviews without any GitHub account. Reviews in preview mode change the local demo only.",
+      "Preview mode loads a full workspace with sample pull requests and diffs. You can explore every view, search, read diffs, and practice submitting reviews without a GitHub account. Reviews in preview mode stay local and are not sent to GitHub.",
     question: "Do I need a GitHub account to explore it now?",
   },
   {
     answer:
-      "A selected diff is accepted only while its base and head revisions stay stable. When a diff is oversized, binary, too many files, or cannot be parsed safely, Hype PRs shows a clear degraded state with an Open in GitHub fallback instead of a blank pane.",
+      "A selected diff is shown only while its base and head revisions stay stable. When a diff is oversized, binary, too many files, or cannot be parsed safely, Hype PRs gives you a clear explanation and an Open in GitHub fallback.",
     question: "How does Hype PRs handle large or unusual diffs?",
   },
   {
@@ -1114,13 +1114,13 @@ function LaunchLogin({
             <div className="launch-brand" aria-hidden="true">
               H
             </div>
-            <span className="eyebrow">Your pull request pulse</span>
+            <span className="eyebrow">Your pull request queue</span>
             <h1 id="launch-title">See what needs you now.</h1>
             <p>
               Hype PRs turns your GitHub pull requests — across every repository —
-              into one action-first queue. It explains why each one needs
+              into one focused queue. It explains why each one needs your
               attention, opens the files and diff for you, and lets you submit a
-              formal review without leaving the app.
+              review without leaving the app.
             </p>
 
             {error && (
@@ -1152,7 +1152,7 @@ function LaunchLogin({
                 type="button"
               >
                 <Code2 aria-hidden="true" size={15} />
-                Explore preview mode
+                Explore preview
               </button>
               <a
                 className="repo-link"
@@ -1166,7 +1166,7 @@ function LaunchLogin({
             </div>
 
             <p className="hero-sub">
-              No account needed to look around · Works in your browser
+              No GitHub account needed for preview · Works in your browser
             </p>
           </div>
 
@@ -1176,10 +1176,10 @@ function LaunchLogin({
                 <span className="mock-dot red" />
                 <span className="mock-dot amber" />
                 <span className="mock-dot green" />
-                <span className="mock-title">Hype PRs — action queue</span>
+                <span className="mock-title">Hype PRs — triage queue</span>
               </div>
               <div className="mock-body">
-                <div className="mock-eyebrow">Your action queue</div>
+                <div className="mock-eyebrow">Your triage queue</div>
                 <div className="mock-row mock-row-focus">
                   <span className="mock-repo">acme/console</span>
                   <span>
@@ -1196,7 +1196,7 @@ function LaunchLogin({
                     <strong>Guard webhook retries</strong>
                     <small>
                       Checks failing 3h ago ·
-                      <span className="mock-tag failed">ci failing</span>
+                      <span className="mock-tag failed">checks failing</span>
                     </small>
                   </span>
                 </div>
@@ -1217,7 +1217,7 @@ function LaunchLogin({
 
         <section className="marketing-section" aria-labelledby="marketing-features-title">
           <div className="marketing-head">
-            <span className="eyebrow">Why Hype PRs</span>
+            <span className="eyebrow">Why it works</span>
             <h2 id="marketing-features-title">
               Built around the moment you triage
             </h2>
@@ -1268,7 +1268,7 @@ function LaunchLogin({
           <div>
             <h2 id="marketing-cta-title">Ready when you are</h2>
             <p>
-              Connect GitHub for your live queue, or explore preview mode to see
+              Connect GitHub for your live queue, or explore the preview to see
               the full interface right now.
             </p>
           </div>
@@ -1292,15 +1292,15 @@ function LaunchLogin({
               type="button"
             >
               <Code2 aria-hidden="true" size={15} />
-              Open preview mode
+              Open preview
             </button>
           </div>
           <p className="hero-sub">
             {checking
-              ? "Checking your session…"
+              ? "Checking your GitHub connection…"
               : configured
-                ? "Live sign-in is ready."
-                : "Live sign-in is not configured in this preview build."}
+                ? "Live GitHub access is ready."
+                : "Live GitHub access is not configured in this preview build."}
           </p>
         </section>
 
@@ -1397,13 +1397,13 @@ function PullRequestHeader({
             type="button"
           >
             <ChevronLeft aria-hidden="true" size={16} />
-            <span>Queue</span>
+            <span>Back</span>
           </button>
         )}
         <div className="detail-breadcrumb">
           <span>{pullRequest.repository}</span>
           <span>/</span>
-          <span>pull</span>
+          <span>pull request</span>
           <span>/</span>
           <strong>#{pullRequest.number}</strong>
         </div>
@@ -1435,7 +1435,7 @@ function PullRequestHeader({
             type="button"
           >
             <ExternalLink aria-hidden="true" size={14} />
-            GitHub
+            Open in GitHub
           </button>
           <button
             className="primary-button compact"
@@ -1457,7 +1457,7 @@ function PullRequestHeader({
         <StatusPill pullRequest={pullRequest} />
         <span className="meta-pill">
           <FileCode2 aria-hidden="true" size={13} />
-          {pullRequest.changedFiles} files
+          {pullRequest.changedFiles} changed files
         </span>
         <span className="meta-pill">
           <MessageSquare aria-hidden="true" size={13} />
@@ -1474,7 +1474,7 @@ function PullRequestHeader({
             {label}
           </span>
         ))}
-        {usingDemo && <span className="demo-pill">SYNTHETIC</span>}
+        {usingDemo && <span className="demo-pill">PREVIEW</span>}
       </div>
     </header>
   );
@@ -1508,34 +1508,33 @@ function ConnectionDialog({
         <div className="modal-icon">
           <LockKeyhole aria-hidden="true" size={24} />
         </div>
-        <span className="eyebrow">Secure connection</span>
-        <h2 id="connection-title">Connect your approved GitHub account</h2>
+        <span className="eyebrow">Live workspace</span>
+        <h2 id="connection-title">Connect GitHub</h2>
 
         {!configured ? (
           <>
             <p>
-              Live GitHub authorization is not configured in this preview
-              build. The complete interface remains available with synthetic
-              data.
+              Live GitHub access is not configured in this preview build. You
+              can still explore the complete workspace with preview data.
             </p>
             <div className="configuration-callout">
               <Code2 aria-hidden="true" size={18} />
               <span>
-                Configure the GitHub App client for the web host. No personal
-                access token is accepted by the UI.
+                Set up the GitHub App for this host. Personal access tokens are
+                not supported.
               </span>
             </div>
           </>
         ) : (
           <>
             <p>
-              Hype PRs uses a GitHub App, so access remains limited by your account,
-              App installation, organization approval, and SSO policy.
+              Connect Hype PRs to GitHub. Your access still follows your
+              account, App installation, organization approval, and SSO policy.
             </p>
             <ul className="permission-list">
               <li>
                 <Check aria-hidden="true" size={15} />
-                Pull requests: read and review
+                Pull requests: read and submit reviews
               </li>
               <li>
                 <Check aria-hidden="true" size={15} />
@@ -1543,7 +1542,7 @@ function ConnectionDialog({
               </li>
               <li>
                 <X aria-hidden="true" size={15} />
-                No source writes, merges, or workflow control
+                No source edits, merges, or workflow controls
               </li>
             </ul>
             <button className="primary-button" onClick={onStart} type="button">
@@ -1554,8 +1553,8 @@ function ConnectionDialog({
         )}
 
         <p className="modal-policy">
-          This app does not bypass employer device or application policy. Your
-          organization may require an administrator to approve it.
+          Hype PRs cannot bypass your organization’s device or application
+          policies. An administrator may need to approve the app.
         </p>
       </section>
     </div>
@@ -1617,7 +1616,7 @@ function ReviewDialog({
         <h2 id="review-title">Review #{pullRequest.number}</h2>
         <p className="review-title-copy">{pullRequest.title}</p>
 
-        <div className="review-options" role="radiogroup" aria-label="Review action">
+        <div className="review-options" role="radiogroup" aria-label="Review decision">
           {(["COMMENT", "APPROVE", "REQUEST_CHANGES"] as ReviewEvent[]).map(
             (option) => (
               <button
@@ -1638,7 +1637,7 @@ function ReviewDialog({
                   <strong>{reviewEventLabel(option)}</strong>
                   <small>
                     {blocked(option)
-                      ? "You cannot approve your own pull request"
+                      ? "You can't approve your own pull request"
                       : reviewEventDescription(option)}
                   </small>
                 </span>
@@ -1656,8 +1655,8 @@ function ReviewDialog({
             autoFocus
             placeholder={
               event === "REQUEST_CHANGES"
-                ? "Explain what needs to change…"
-                : "Leave a clear review summary…"
+                ? "Tell the author what to change…"
+                : "Add a clear review summary…"
             }
             value={body}
             onChange={(inputEvent) => {
@@ -1680,7 +1679,7 @@ function ReviewDialog({
             <span>
               <strong>Ready to submit {reviewEventLabel(event)}?</strong>
               {usingDemo
-                ? "This changes the local demo only."
+                ? "This stays in preview mode and is not sent to GitHub."
                 : "GitHub will notify pull request participants."}
             </span>
           </div>
@@ -1709,7 +1708,7 @@ function ReviewDialog({
               onClick={() => setConfirming(true)}
               type="button"
             >
-              Preview submission
+              Review submission
             </button>
           )}
         </div>
@@ -1803,7 +1802,7 @@ function StatusSummary({ pullRequest }: { pullRequest: PullRequestSummary }) {
   }
   return (
     <span className="status-summary neutral">
-      <CircleDot aria-hidden="true" size={13} /> Review open
+      <CircleDot aria-hidden="true" size={13} /> Review pending
     </span>
   );
 }
@@ -1819,6 +1818,13 @@ function StatusPill({ pullRequest }: { pullRequest: PullRequestSummary }) {
       </span>
     );
   }
+  if (pullRequest.checkState === "PENDING") {
+    return (
+      <span className="status-pill pending">
+        <Clock3 aria-hidden="true" size={13} /> Checks running
+      </span>
+    );
+  }
   if (pullRequest.reviewDecision === "APPROVED") {
     return (
       <span className="status-pill success">
@@ -1828,7 +1834,7 @@ function StatusPill({ pullRequest }: { pullRequest: PullRequestSummary }) {
   }
   return (
     <span className="status-pill pending">
-      <Clock3 aria-hidden="true" size={13} /> Review in progress
+      <Clock3 aria-hidden="true" size={13} /> Review pending
     </span>
   );
 }
@@ -1891,9 +1897,9 @@ function reviewEventLabel(event: ReviewEvent) {
 }
 
 function reviewEventDescription(event: ReviewEvent) {
-  if (event === "APPROVE") return "Looks good to merge";
-  if (event === "REQUEST_CHANGES") return "Block until updates land";
-  return "Feedback without a decision";
+  if (event === "APPROVE") return "Approve this pull request";
+  if (event === "REQUEST_CHANGES") return "Request changes before approval";
+  return "Leave feedback without approving or blocking";
 }
 
 function relativeTime(value: string, now: number): string {
@@ -1928,7 +1934,7 @@ function withTimeout<T>(
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeout = window.setTimeout(
-      () => reject(new Error("The GitHub connection check timed out.")),
+      () => reject(new Error("GitHub is taking too long to respond. Try again.")),
       timeoutMs,
     );
     promise.then(resolve, reject).finally(() => window.clearTimeout(timeout));

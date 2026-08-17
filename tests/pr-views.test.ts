@@ -241,7 +241,7 @@ test("search spans path-independent PR metadata and reason text", () => {
     ["changes"],
   );
   assert.deepEqual(
-    searchPullRequests(corpus, "ci failed", NOW).map(({ id }) => id),
+    searchPullRequests(corpus, "checks failing", NOW).map(({ id }) => id),
     ["ci"],
   );
   assert.deepEqual(

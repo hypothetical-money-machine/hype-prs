@@ -26,7 +26,7 @@ test("workspace panels collapse from the viewer boundary and restore context", a
     );
 
     const preview = await screen.findByRole("button", {
-      name: /Explore preview mode/,
+      name: /Explore preview/,
     });
     fireEvent.click(preview);
 
@@ -115,7 +115,7 @@ test("switching pull requests clears the previously selected file", async () => 
     );
 
     const preview = await view.findByRole("button", {
-      name: /Explore preview mode/,
+      name: /Explore preview/,
     });
     fireEvent.click(preview);
 
@@ -169,7 +169,7 @@ test("the review dialog withholds Approve on the viewer's own pull request", asy
     );
 
     fireEvent.click(
-      await view.findByRole("button", { name: /Explore preview mode/ }),
+      await view.findByRole("button", { name: /Explore preview/ }),
     );
 
     // Authored: GitHub would reject the approval, so the option is inert.
@@ -185,7 +185,7 @@ test("the review dialog withholds Approve on the viewer's own pull request", asy
     assert.equal((blockedApprove as HTMLButtonElement).disabled, true);
     assert.match(
       blockedApprove.textContent ?? "",
-      /You cannot approve your own pull request/,
+      /You can't approve your own pull request/,
     );
     fireEvent.click(view.getByRole("button", { name: "Close review" }));
 
@@ -203,7 +203,7 @@ test("the review dialog withholds Approve on the viewer's own pull request", asy
     assert.equal(
       (
         view.getByRole("button", {
-          name: "Preview submission",
+          name: "Review submission",
         }) as HTMLButtonElement
       ).disabled,
       false,

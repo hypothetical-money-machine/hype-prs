@@ -52,39 +52,40 @@ export const viewDefinitions: ViewDefinition[] = [
   {
     id: "needs-attention",
     label: "Needs attention",
-    shortLabel: "Needs attention",
-    description: "Actionable requests and unhealthy PRs, ranked by obligation.",
+    shortLabel: "Needs you",
+    description:
+      "Pull requests that need a decision or action from you, ranked by urgency.",
   },
   {
     id: "review-requested",
     label: "Review requested",
-    shortLabel: "Review requested",
+    shortLabel: "Reviews",
     description:
-      "Direct requests, least-recently updated first. Demo fixtures can model team requests.",
+      "Pull requests waiting for your review, including team requests.",
   },
   {
     id: "my-prs",
     label: "My pull requests",
     shortLabel: "My PRs",
-    description: "Your open work, separated into needs-you, ready, and waiting.",
+    description: "Your open pull requests, organized by what happens next.",
   },
   {
     id: "ci-failing",
-    label: "CI failing",
-    shortLabel: "CI failing",
-    description: "Failed checks on work you own or participate in.",
+    label: "Checks failing",
+    shortLabel: "Checks failing",
+    description: "Pull requests blocked by failing checks.",
   },
   {
     id: "awaiting-response",
-    label: "Awaiting response",
-    shortLabel: "Awaiting",
-    description: "You completed the current action and someone else owns the next one.",
+    label: "Waiting on others",
+    shortLabel: "Waiting",
+    description: "Your pull requests waiting on reviewers or checks.",
   },
   {
     id: "recently-updated",
-    label: "Recently updated",
+    label: "Recent activity",
     shortLabel: "Recent",
-    description: "Human-significant activity ordered newest first.",
+    description: "Pull requests with meaningful activity in the last seven days.",
   },
   {
     id: "stale",
@@ -95,20 +96,20 @@ export const viewDefinitions: ViewDefinition[] = [
   {
     id: "repository",
     label: "By repository",
-    shortLabel: "Repository",
-    description: "Repositories with the most actionable work first.",
+    shortLabel: "Repositories",
+    description: "All pull requests grouped by repository.",
   },
   {
     id: "author",
     label: "By author",
-    shortLabel: "Author",
-    description: "Authors with the most actionable work first.",
+    shortLabel: "Authors",
+    description: "All pull requests grouped by author.",
   },
   {
     id: "all",
     label: "All pull requests",
     shortLabel: "All PRs",
-    description: "The complete synchronized set, recently updated by default.",
+    description: "Every pull request in this workspace, most recent activity first.",
   },
 ];
 
@@ -149,7 +150,7 @@ export function dominantReason(
     return reason(
       "rereview",
       "RE-REVIEW",
-      "The head revision changed after your last review",
+      "New commits landed after your last review",
       pullRequest.updatedAt,
       1,
       "violet",
@@ -189,7 +190,7 @@ export function dominantReason(
     return reason(
       "mentioned",
       "MENTIONED",
-      "A conversation is waiting for your response",
+      "A conversation needs your response",
       pullRequest.updatedAt,
       1,
       "violet",
@@ -199,8 +200,8 @@ export function dominantReason(
   if (authored && pullRequest.checkState === "FAILURE") {
     return reason(
       "ci-failed",
-      "CI FAILED",
-      "A failing check is blocking your pull request",
+      "CHECKS FAILING",
+      "Failing checks are blocking your pull request",
       pullRequest.updatedAt,
       2,
       "red",
@@ -228,7 +229,7 @@ export function dominantReason(
     return reason(
       "ready",
       "READY",
-      "Approved, green, and ready for the next step",
+      "Approved and checks are passing",
       pullRequest.updatedAt,
       2,
       "green",
@@ -253,7 +254,7 @@ export function dominantReason(
     return reason(
       "stale",
       "STALE",
-      "No meaningful activity for at least seven days",
+      "No meaningful activity in the last seven days",
       pullRequest.lastMeaningfulActivityAt,
       4,
       "muted",
@@ -268,8 +269,8 @@ export function dominantReason(
   ) {
     return reason(
       "awaiting-review",
-      "AWAITING REVIEW",
-      "Reviewers own the next step",
+      "WAITING FOR REVIEW",
+      "Waiting for reviewers to take the next step",
       pullRequest.updatedAt,
       5,
       "blue",
@@ -289,8 +290,8 @@ export function dominantReason(
 
   return reason(
     "updated",
-    "UPDATED",
-    "Recently changed",
+    "RECENT ACTIVITY",
+    "Recently active",
     pullRequest.lastMeaningfulActivityAt,
     5,
     "muted",

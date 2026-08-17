@@ -78,7 +78,7 @@ test("mobile PR viewer navigation switches between queue and detail panes", asyn
     );
 
     const preview = await view.findByRole("button", {
-      name: /Explore preview mode/,
+      name: /Explore preview/,
     });
     fireEvent.click(preview);
 
@@ -106,7 +106,7 @@ test("mobile PR viewer navigation switches between queue and detail panes", asyn
 
     // Click back button
     const backButton = view.getByRole("button", {
-      name: /Back to queue/,
+      name: /Back/,
     });
     fireEvent.click(backButton);
 
@@ -143,7 +143,7 @@ test("mobile diff workspace switches between diff and changed files tabs", async
     );
 
     const preview = await view.findByRole("button", {
-      name: /Explore preview mode/,
+      name: /Explore preview/,
     });
     fireEvent.click(preview);
 
@@ -155,7 +155,7 @@ test("mobile diff workspace switches between diff and changed files tabs", async
     );
 
     const diffWorkspace = view.getByRole("tab", {
-      name: /Diff View/,
+      name: /^Diff$/,
     }).closest(".diff-workspace");
     assert.ok(diffWorkspace, "diff-workspace element should exist");
     assert.equal(
@@ -211,7 +211,7 @@ test("mobile quick view pills switch active triage view", async () => {
     );
 
     const preview = await view.findByRole("button", {
-      name: /Explore preview mode/,
+      name: /Explore preview/,
     });
     fireEvent.click(preview);
 
