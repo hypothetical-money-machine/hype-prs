@@ -18,10 +18,10 @@ const CURRENT_HEAD = "c".repeat(40);
 const BASE_SHA = "d".repeat(40);
 const NEW_BASE_SHA = "e".repeat(40);
 
-test("documents Contents access for commit-backed inbox fields", async () => {
+test("keeps the inbox query lightweight while documenting Contents access for diffs", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   assert.match(PR_FRAGMENT, /commits\(last: 1\)/);
-  assert.match(PR_FRAGMENT, /latestOpinionatedReviews/);
+  assert.doesNotMatch(PR_FRAGMENT, /latestOpinionatedReviews/);
   assert.match(readme, /- Contents: read/);
 });
 
@@ -47,6 +47,131 @@ test("authenticated API requests identify Hype PRs to GitHub", async () => {
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("retries a transient GitHub failure while loading the inbox", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ input: string; method?: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ input: String(input), method: init?.method });
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    if (calls.filter((call) => call.input.endsWith("/graphql")).length === 1) {
+      return new Response("Bad Gateway", { status: 502 });
+    }
+    return Response.json({
+      data: {
+        assigned: { nodes: [] },
+        authored: { nodes: [] },
+        reviewRequested: { nodes: [] },
+        reviewed: { nodes: [] },
+      },
+    });
+  };
+
+  try {
+    const result = await loadInboxWithToken("secret-token");
+    assert.deepEqual(result.pullRequests, []);
+    assert.equal(
+      calls.filter((call) => call.input.endsWith("/graphql")).length,
+      2,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("retries a transient network failure while loading GitHub data", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError("fetch failed");
+    return Response.json({
+      avatar_url: null,
+      login: "morgan",
+      name: "Morgan",
+    });
+  };
+
+  try {
+    const viewer = await getViewerWithToken("secret-token");
+    assert.equal(viewer.login, "morgan");
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not retry a GitHub review submission", async () => {
+  const originalFetch = globalThis.fetch;
+  const methods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    methods.push(init?.method ?? "GET");
+    if (init?.method === "GET") {
+      return Response.json({
+        base: { sha: BASE_SHA },
+        head: { sha: CURRENT_HEAD },
+      });
+    }
+    return new Response("Bad Gateway", { status: 502 });
+  };
+
+  try {
+    await assert.rejects(
+      submitReviewWithToken("secret-token", {
+        baseCommitId: BASE_SHA,
+        body: "Looks good",
+        commitId: CURRENT_HEAD,
+        event: "APPROVE",
+        number: 30,
+        owner: "acme",
+        repository: "console",
+      }),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.code === "github_502" &&
+        error.message ===
+          "GitHub is temporarily unavailable. We retried automatically; try again in a moment.",
+    );
+    assert.deepEqual(methods, ["GET", "POST"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("logs safe diagnostics when a GitHub request finally fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const messages: unknown[] = [];
+  console.error = (...args) => messages.push(args[0]);
+  globalThis.fetch = async () =>
+    new Response("Not Implemented", {
+      headers: { "x-github-request-id": "ABC1:2345:6789" },
+      status: 501,
+    });
+
+  try {
+    await assert.rejects(getViewerWithToken("secret-token"));
+    const diagnostic = JSON.parse(String(messages[0]));
+    assert.deepEqual(diagnostic, {
+      attempts: 1,
+      endpoint: "/user",
+      event: "github_api_request_failed",
+      githubRequestId: "ABC1:2345:6789",
+      method: "GET",
+      status: 501,
+    });
+    assert.doesNotMatch(String(messages[0]), /secret-token/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
   }
 });
 
@@ -78,7 +203,6 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
           {
             commit: {
               oid: CURRENT_HEAD,
-              statusCheckRollup: { state: "SUCCESS" },
             },
           },
         ],
@@ -90,21 +214,8 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       id: "PR_real",
       isDraft: false,
       labels: { nodes: [{ name: "a11y" }, { name: "design-system" }] },
-      latestOpinionatedReviews: { nodes: [] },
-      mergeable: "MERGEABLE",
       number: 128,
       repository: { nameWithOwner: "real/design-system" },
-      reviewDecision: "REVIEW_REQUIRED",
-      reviewRequests: {
-        nodes: [
-          {
-            requestedReviewer: {
-              __typename: "User",
-              login: "morgan",
-            },
-          },
-        ],
-      },
       title: "Use real pull request data",
       updatedAt: "2026-07-28T18:00:00.000Z",
       url: "https://github.com/real/design-system/pull/128",
@@ -121,28 +232,19 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
         reviewRequested: { nodes: [pullRequest] },
         reviewed: { nodes: [] },
       },
-      errors: [
-        {
-          message: "Resource not accessible by integration",
-          path: [
-            "reviewRequested",
-            "nodes",
-            0,
-            "commits",
-            "nodes",
-            0,
-            "commit",
-            "statusCheckRollup",
-          ],
-        },
-      ],
     });
   };
 
   try {
     const result = await loadInboxWithToken("secret-token");
     assert.match(graphqlBodies[0]?.query ?? "", /comments\s*\{\s*totalCount/);
-    assert.match(graphqlBodies[0]?.query ?? "", /labels\(first: 100\)/);
+    assert.match(
+      graphqlBodies[0]?.query ?? "",
+      /authored: search\(type: ISSUE, query: \$authoredQuery, first: 20\)/,
+    );
+    assert.match(graphqlBodies[0]?.query ?? "", /labels\(first: 20\)/);
+    assert.doesNotMatch(graphqlBodies[0]?.query ?? "", /statusCheckRollup/);
+    assert.doesNotMatch(graphqlBodies[0]?.query ?? "", /reviewRequests/);
     assert.deepEqual(result.pullRequests[0], {
       additions: 58,
       author: {
@@ -152,7 +254,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       },
       baseRefName: "main",
       changedFiles: 3,
-      checkState: "SUCCESS",
+      checkState: "NEUTRAL",
       commentCount: 7,
       createdAt: "2026-07-26T18:00:00.000Z",
       deletions: 14,
@@ -162,11 +264,11 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       isDraft: false,
       labels: ["a11y", "design-system"],
       lastMeaningfulActivityAt: "2026-07-28T18:00:00.000Z",
-      mergeState: "MERGEABLE",
+      mergeState: "UNKNOWN",
       mentionsViewer: false,
       number: 128,
       repository: "real/design-system",
-      reviewDecision: "REVIEW_REQUIRED",
+      reviewDecision: null,
       reviewRequestedAt: null,
       teamReviewRequested: false,
       title: "Use real pull request data",
@@ -177,9 +279,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
       viewerRelationship: "REVIEW_REQUESTED",
       viewerReviewState: null,
     });
-    assert.deepEqual(result.warnings, [
-      "Some pull request details are unavailable. GitHub denied: statusCheckRollup. Approve the GitHub App’s requested repository permissions to restore them.",
-    ]);
+    assert.equal(result.warnings, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

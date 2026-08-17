@@ -119,15 +119,6 @@ export function mapInboxPayload(data, viewer, warnings = []) {
 }
 
 export function mapPullRequest(node, buckets, viewerLogin) {
-  const reviewRequests = node.reviewRequests?.nodes ?? [];
-  const directReview = reviewRequests.some(
-    (request) =>
-      request?.requestedReviewer?.__typename === "User" &&
-      request.requestedReviewer.login === viewerLogin,
-  );
-  const requestedTeamPresent = reviewRequests.some(
-    (request) => request?.requestedReviewer?.__typename === "Team",
-  );
   const reviews = (node.latestOpinionatedReviews?.nodes ?? []).filter(
     (review) => review?.author?.login === viewerLogin,
   );
@@ -143,10 +134,11 @@ export function mapPullRequest(node, buckets, viewerLogin) {
 
   let viewerRelationship = "PARTICIPATING";
   if (authored) viewerRelationship = "AUTHOR";
-  else if (buckets.has("reviewRequested") && directReview) {
+  // The `user-review-requested:@me` search bucket is GitHub's authoritative
+  // direct-review signal. Reading PullRequest.reviewRequests separately is
+  // both redundant and not always available to a valid App installation.
+  else if (buckets.has("reviewRequested")) {
     viewerRelationship = "REVIEW_REQUESTED";
-  } else if (buckets.has("reviewRequested") && requestedTeamPresent) {
-    viewerRelationship = "TEAM_REVIEW_REQUESTED";
   } else if (buckets.has("assigned")) {
     viewerRelationship = "ASSIGNED";
   }
@@ -176,8 +168,7 @@ export function mapPullRequest(node, buckets, viewerLogin) {
     repository: node.repository?.nameWithOwner ?? "",
     reviewDecision: node.reviewDecision ?? null,
     reviewRequestedAt: null,
-    teamReviewRequested:
-      buckets.has("reviewRequested") && requestedTeamPresent,
+    teamReviewRequested: false,
     title: node.title,
     updatedAt: node.updatedAt,
     url: node.url,

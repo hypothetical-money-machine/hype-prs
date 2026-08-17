@@ -9,11 +9,63 @@ const GITHUB_GRAPHQL_URL = `${GITHUB_API_URL}/graphql`;
 const GITHUB_LOGIN_URL = "https://github.com/login";
 const GITHUB_API_VERSION = "2026-03-10";
 const GITHUB_USER_AGENT = "Hype-PRs/0.1.0";
+const GITHUB_MAX_READ_ATTEMPTS = 2;
+const GITHUB_RETRY_DELAYS_MS = [250];
+const GITHUB_TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
+const MAX_INBOX_RESULTS_PER_BUCKET = 20;
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
 const MAX_FILE_PAGES = 30;
 
 export const PR_FRAGMENT = `
   fragment PullRequestInboxItem on PullRequest {
+    additions
+    author {
+      avatarUrl
+      login
+      ... on User {
+        name
+      }
+    }
+    baseRefName
+    changedFiles
+    commits(last: 1) {
+      nodes {
+        commit {
+          oid
+        }
+      }
+    }
+    comments {
+      totalCount
+    }
+    createdAt
+    deletions
+    headRefName
+    headRefOid
+    id
+    isDraft
+    labels(first: 20) {
+      nodes {
+        name
+      }
+    }
+    number
+    repository {
+      nameWithOwner
+    }
+    title
+    updatedAt
+    url
+  }
+`;
+
+// The mapping helpers in `inbox-mapping.mjs` derive the lane, the reason
+// chips, and the "you are assigned / review requested" relationship from
+// extra fields that the cheap inbox fragment above does not request. The
+// paginated inbox query asks for them, at the cost of a larger query cost
+// per page.
+export const PR_DETAIL_FRAGMENT = `
+  fragment PullRequestInboxItemDetail on PullRequest {
     additions
     author {
       avatarUrl
@@ -99,22 +151,22 @@ export const INBOX_QUERY = `
       login
       name
     }
-    authored: search(type: ISSUE, query: $authoredQuery, first: 50) {
+    authored: search(type: ISSUE, query: $authoredQuery, first: ${MAX_INBOX_RESULTS_PER_BUCKET}) {
       nodes {
         ...PullRequestInboxItem
       }
     }
-    assigned: search(type: ISSUE, query: $assignedQuery, first: 50) {
+    assigned: search(type: ISSUE, query: $assignedQuery, first: ${MAX_INBOX_RESULTS_PER_BUCKET}) {
       nodes {
         ...PullRequestInboxItem
       }
     }
-    reviewRequested: search(type: ISSUE, query: $reviewQuery, first: 50) {
+    reviewRequested: search(type: ISSUE, query: $reviewQuery, first: ${MAX_INBOX_RESULTS_PER_BUCKET}) {
       nodes {
         ...PullRequestInboxItem
       }
     }
-    reviewed: search(type: ISSUE, query: $reviewedQuery, first: 50) {
+    reviewed: search(type: ISSUE, query: $reviewedQuery, first: ${MAX_INBOX_RESULTS_PER_BUCKET}) {
       nodes {
         ...PullRequestInboxItem
       }
@@ -133,7 +185,7 @@ export const INBOX_QUERY = `
 // runs any of the search aliases. Page 2 is therefore a follow-up that passes
 // each bucket's end cursor from page 1.
 export const INBOX_PAGE_QUERY = `
-  ${PR_FRAGMENT}
+  ${PR_DETAIL_FRAGMENT}
   query HypePullRequestInboxPage(
     $authoredQuery: String!
     $assignedQuery: String!
@@ -265,6 +317,7 @@ export async function loadInboxWithToken(token, signal) {
       signal,
     },
     token,
+    { retryable: true },
   );
   const payload = await response.json();
   const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
@@ -330,6 +383,7 @@ export async function loadInboxPageWithToken(
       signal,
     },
     token,
+    { retryable: true },
   );
   const payload = await response.json();
   const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
@@ -627,7 +681,6 @@ export function publicError(error) {
   };
 }
 
-
 async function loadChangedFiles(token, basePath, signal) {
   const files = [];
   for (let page = 1; page <= MAX_FILE_PAGES; page += 1) {
@@ -723,7 +776,7 @@ function describeGitHubErrors(errors) {
   return [...new Set(described)].join(" ");
 }
 
-async function githubFetch(pathOrUrl, init, token) {
+async function githubFetch(pathOrUrl, init, token, { retryable = false } = {}) {
   const url = pathOrUrl.startsWith("https://")
     ? pathOrUrl
     : `${GITHUB_API_URL}${pathOrUrl}`;
@@ -748,9 +801,73 @@ async function githubFetch(pathOrUrl, init, token) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, { ...init, headers });
-  if (response.ok) return response;
+  const canRetry = retryable || init.method === "GET";
+  const maxAttempts = canRetry ? GITHUB_MAX_READ_ATTEMPTS : 1;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(url, { ...init, headers });
+    } catch (error) {
+      if (isAbortError(error, init.signal)) throw error;
+      if (attempt < maxAttempts) {
+        const delayMs = GITHUB_RETRY_DELAYS_MS[attempt - 1];
+        logGitHubRetry({
+          attempt,
+          delayMs,
+          endpoint: githubEndpoint(url),
+          method: init.method ?? "GET",
+          reason: "network_error",
+        });
+        await waitForGitHubRetry(delayMs, init.signal);
+        continue;
+      }
+      logGitHubFailure({
+        attempts: attempt,
+        endpoint: githubEndpoint(url),
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        method: init.method ?? "GET",
+      });
+      throw new GitHubApiError(
+        "GitHub could not be reached. Try again in a moment.",
+        { code: "github_network_error", status: 503 },
+      );
+    }
 
+    if (response.ok) return response;
+
+    if (
+      attempt < maxAttempts &&
+      GITHUB_TRANSIENT_STATUSES.has(response.status)
+    ) {
+      const delayMs = GITHUB_RETRY_DELAYS_MS[attempt - 1];
+      logGitHubRetry({
+        attempt,
+        delayMs,
+        endpoint: githubEndpoint(url),
+        githubRequestId: response.headers.get("x-github-request-id"),
+        method: init.method ?? "GET",
+        reason: "http_status",
+        status: response.status,
+      });
+      await response.body?.cancel().catch(() => {});
+      await waitForGitHubRetry(delayMs, init.signal);
+      continue;
+    }
+
+    return throwGitHubResponseError(response, {
+      attempts: attempt,
+      endpoint: githubEndpoint(url),
+      method: init.method ?? "GET",
+    });
+  }
+
+  throw new GitHubApiError("GitHub request retry loop failed unexpectedly.", {
+    code: "github_retry_error",
+    status: 500,
+  });
+}
+
+async function throwGitHubResponseError(response, context) {
   let githubMessage = null;
   if (
     response.headers.get("content-type")?.includes("application/json")
@@ -765,10 +882,15 @@ async function githubFetch(pathOrUrl, init, token) {
     if (details) {
       githubMessage = githubMessage ? `${githubMessage}: ${details}` : details;
     }
+  } else {
+    await response.body?.cancel().catch(() => {});
   }
   let message =
     githubMessage ?? `GitHub request failed (${response.status}).`;
-  if (response.status === 401) {
+  if (GITHUB_TRANSIENT_STATUSES.has(response.status)) {
+    message =
+      "GitHub is temporarily unavailable. We retried automatically; try again in a moment.";
+  } else if (response.status === 401) {
     message = "The GitHub session expired or was revoked. Connect again.";
   } else if (response.status === 403) {
     message =
@@ -780,11 +902,61 @@ async function githubFetch(pathOrUrl, init, token) {
       "The pull request is unavailable or the GitHub App cannot access its repository.";
   }
 
+  logGitHubFailure({
+    ...context,
+    githubRequestId: response.headers.get("x-github-request-id"),
+    status: response.status,
+  });
   throw new GitHubApiError(message, {
     code: `github_${response.status}`,
     githubMessage,
     requestId: response.headers.get("x-github-request-id"),
     status: response.status,
+  });
+}
+
+function githubEndpoint(url) {
+  return new URL(url).pathname;
+}
+
+function isAbortError(error, signal) {
+  return signal?.aborted || error?.name === "AbortError";
+}
+
+function logGitHubRetry(details) {
+  console.warn(
+    JSON.stringify({ event: "github_api_retry", ...details }),
+  );
+}
+
+function logGitHubFailure(details) {
+  console.error(
+    JSON.stringify({ event: "github_api_request_failed", ...details }),
+  );
+}
+
+async function waitForGitHubRetry(delayMs, signal) {
+  if (!signal) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(done, delayMs);
+    function abort() {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+      reject(signal.reason ?? new DOMException("Request aborted.", "AbortError"));
+    }
+    function done() {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
   });
 }
 
