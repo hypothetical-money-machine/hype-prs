@@ -1127,14 +1127,11 @@ test("paginated inbox page passes per-bucket after cursors and perBucket", async
     graphqlBodies.push(JSON.parse(String(init?.body)));
     return Response.json({
       data: {
-        assigned: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
-        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
-        rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-07-01T01:00:00.000Z" },
-        reviewRequested: {
+        pullRequests: {
           nodes: [],
           pageInfo: { hasNextPage: false, endCursor: null },
         },
-        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-07-01T01:00:00.000Z" },
       },
     });
   };
@@ -1147,24 +1144,44 @@ test("paginated inbox page passes per-bucket after cursors and perBucket", async
         reviewRequested: "cursor_r",
       },
     });
-    const variables = graphqlBodies[0]?.variables;
+    assert.equal(graphqlBodies.length, 4);
     const query = graphqlBodies[0]?.query ?? "";
     assert.match(query, /fragment PullRequestInboxItemDetail on PullRequest/);
     assert.match(query, /\.\.\.PullRequestInboxItemDetail/);
     assert.doesNotMatch(query, /\.\.\.PullRequestInboxItem(?!Detail)/);
-    assert.equal(variables?.perBucket, 25);
-    assert.equal(variables?.authoredAfter, "cursor_a");
-    assert.equal(variables?.reviewAfter, "cursor_r");
-    assert.equal(variables?.assignedAfter, null);
-    assert.equal(variables?.reviewedAfter, null);
+    assert.doesNotMatch(query, /reviewRequests/);
+    assert.match(query, /labels\(first: 20\)/);
+    for (const body of graphqlBodies) {
+      assert.equal(body.variables?.perBucket, 25);
+    }
+    const authored = graphqlBodies.find((body) =>
+      String(body.variables?.searchQuery).includes("author:morgan"),
+    );
+    const assigned = graphqlBodies.find((body) =>
+      String(body.variables?.searchQuery).includes("assignee:morgan"),
+    );
+    const reviewRequested = graphqlBodies.find((body) =>
+      String(body.variables?.searchQuery).includes("user-review-requested:@me"),
+    );
+    const reviewed = graphqlBodies.find((body) =>
+      String(body.variables?.searchQuery).includes("reviewed-by:morgan"),
+    );
+    assert.equal(authored?.variables?.after, "cursor_a");
+    assert.equal(reviewRequested?.variables?.after, "cursor_r");
+    assert.equal(assigned?.variables?.after, null);
+    assert.equal(reviewed?.variables?.after, null);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("paginated inbox page returns raw bucket nodes and pageInfo", async () => {
+test("splits paginated inbox buckets to avoid GitHub GraphQL timeouts", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
+  const graphqlBodies: Array<{
+    query?: string;
+    variables?: Record<string, unknown>;
+  }> = [];
+  globalThis.fetch = async (input, init) => {
     if (String(input).endsWith("/user")) {
       return Response.json({
         avatar_url: null,
@@ -1172,47 +1189,101 @@ test("paginated inbox page returns raw bucket nodes and pageInfo", async () => {
         name: "Morgan",
       });
     }
+
+    const body = JSON.parse(String(init?.body));
+    graphqlBodies.push(body);
+    const searchCount = body.query?.match(/\bsearch\s*\(/g)?.length ?? 0;
+    if (searchCount > 1) {
+      return new Response("Bad Gateway", { status: 502 });
+    }
     return Response.json({
       data: {
-        assigned: {
-          nodes: [
-            {
-              id: "PR_assigned",
-              repository: { nameWithOwner: "acme/console" },
-              number: 1,
-              title: "Assigned",
-              url: "https://github.com/acme/console/pull/1",
-              baseRefName: "main",
-              headRefName: "feature",
-              headRefOid: "a".repeat(40),
-              isDraft: false,
-              additions: 1,
-              deletions: 1,
-              changedFiles: 1,
-              comments: { totalCount: 0 },
-              labels: { nodes: [] },
-              commits: {
-                nodes: [
-                  { commit: { oid: "a".repeat(40), statusCheckRollup: null } },
-                ],
-              },
-              latestOpinionatedReviews: { nodes: [] },
-              reviewRequests: { nodes: [] },
-              reviewDecision: null,
-              mergeable: "MERGEABLE",
-              createdAt: "2026-07-01T00:00:00.000Z",
-              updatedAt: "2026-07-01T00:00:00.000Z",
-              author: { login: "octocat", name: "Octo Cat", avatarUrl: null },
-            },
-          ],
-          pageInfo: { hasNextPage: true, endCursor: "next" },
-        },
-        authored: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
-        reviewRequested: {
+        pullRequests: {
           nodes: [],
           pageInfo: { hasNextPage: false, endCursor: null },
         },
-        reviewed: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        rateLimit: {
+          cost: 1,
+          remaining: 4999,
+          resetAt: "2026-07-01T01:00:00.000Z",
+        },
+      },
+    });
+  };
+
+  try {
+    await loadInboxPageWithToken("secret-token", { perBucket: 25 });
+    assert.equal(graphqlBodies.length, 4);
+    for (const body of graphqlBodies) {
+      assert.equal(body.query?.match(/\bsearch\s*\(/g)?.length, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginated inbox page returns raw bucket nodes and pageInfo", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/user")) {
+      return Response.json({
+        avatar_url: null,
+        login: "morgan",
+        name: "Morgan",
+      });
+    }
+    const body = JSON.parse(String(init?.body));
+    const isAssigned = String(body.variables?.searchQuery).includes(
+      "assignee:morgan",
+    );
+    return Response.json({
+      data: {
+        pullRequests: {
+          nodes: isAssigned
+            ? [
+                {
+                  id: "PR_assigned",
+                  repository: { nameWithOwner: "acme/console" },
+                  number: 1,
+                  title: "Assigned",
+                  url: "https://github.com/acme/console/pull/1",
+                  baseRefName: "main",
+                  headRefName: "feature",
+                  headRefOid: "a".repeat(40),
+                  isDraft: false,
+                  additions: 1,
+                  deletions: 1,
+                  changedFiles: 1,
+                  comments: { totalCount: 0 },
+                  labels: { nodes: [] },
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          oid: "a".repeat(40),
+                          statusCheckRollup: null,
+                        },
+                      },
+                    ],
+                  },
+                  latestOpinionatedReviews: { nodes: [] },
+                  reviewRequests: { nodes: [] },
+                  reviewDecision: null,
+                  mergeable: "MERGEABLE",
+                  createdAt: "2026-07-01T00:00:00.000Z",
+                  updatedAt: "2026-07-01T00:00:00.000Z",
+                  author: {
+                    login: "octocat",
+                    name: "Octo Cat",
+                    avatarUrl: null,
+                  },
+                },
+              ]
+            : [],
+          pageInfo: isAssigned
+            ? { hasNextPage: true, endCursor: "next" }
+            : { hasNextPage: false, endCursor: null },
+        },
         rateLimit: { cost: 1, remaining: 4997, resetAt: "2026-07-01T01:00:00.000Z" },
       },
     });
