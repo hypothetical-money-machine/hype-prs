@@ -5,6 +5,10 @@ import type {
   PullRequestSummary,
 } from "./types";
 
+// Shared by the demo pull requests and their diffs so the demo inbox always
+// agrees with the comparison it renders.
+const DEMO_BASE_SHA = "demo-base-revision";
+
 export const createDemoPullRequests = (
   now: number = Date.now(),
 ): PullRequestSummary[] => {
@@ -18,6 +22,7 @@ export const createDemoPullRequests = (
       additions: 184,
       author: { login: "maya-chen", name: "Maya Chen" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 7,
       checkState: "SUCCESS",
       commentCount: 6,
@@ -48,6 +53,7 @@ export const createDemoPullRequests = (
       additions: 96,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 4,
       checkState: "FAILURE",
       commentCount: 11,
@@ -78,6 +84,7 @@ export const createDemoPullRequests = (
       additions: 58,
       author: { login: "omar-s", name: "Omar Singh" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 3,
       checkState: "SUCCESS",
       commentCount: 3,
@@ -108,6 +115,7 @@ export const createDemoPullRequests = (
       additions: 211,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 9,
       checkState: "SUCCESS",
       commentCount: 8,
@@ -138,6 +146,7 @@ export const createDemoPullRequests = (
       additions: 73,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 5,
       checkState: "PENDING",
       commentCount: 1,
@@ -168,6 +177,7 @@ export const createDemoPullRequests = (
       additions: 402,
       author: { login: "nina-p", name: "Nina Patel" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 13,
       checkState: "NEUTRAL",
       commentCount: 2,
@@ -198,6 +208,7 @@ export const createDemoPullRequests = (
       additions: 37,
       author: { login: "liam-k", name: "Liam Kim" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 2,
       checkState: "SUCCESS",
       commentCount: 9,
@@ -228,6 +239,7 @@ export const createDemoPullRequests = (
       additions: 126,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 6,
       checkState: "SUCCESS",
       commentCount: 4,
@@ -446,7 +458,7 @@ export const demoDiffs: Record<string, PullRequestDiff> = Object.fromEntries(
   createDemoPullRequests().map((pullRequest) => [
     pullRequest.id,
     {
-      baseSha: "demo-base-revision",
+      baseSha: DEMO_BASE_SHA,
       files:
         pullRequest.id === "demo-842"
           ? consoleFiles

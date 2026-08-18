@@ -63,6 +63,7 @@ function buildNode(
   repository: string,
   title: string,
   login: string,
+  baseRefOid: string = BASE_SHA,
 ) {
   return {
     id,
@@ -71,6 +72,7 @@ function buildNode(
     title,
     url: `https://github.com/${repository}/pull/${id}`,
     baseRefName: "main",
+    baseRefOid,
     headRefName: "feature",
     headRefOid: HEAD_SHA,
     isDraft: false,
@@ -96,11 +98,13 @@ function buildPage(
   viewer: string,
   overrides: {
     authoredIds?: Array<[string, string, string, string]>;
+    baseRefOid?: string;
     hasNextPage?: boolean;
   } = {},
 ): InboxPage {
   const authoredNodes = (overrides.authoredIds ?? []).map(
-    ([id, repository, title, login]) => buildNode(id, repository, title, login),
+    ([id, repository, title, login]) =>
+      buildNode(id, repository, title, login, overrides.baseRefOid ?? BASE_SHA),
   );
   return {
     buckets: {
@@ -297,6 +301,105 @@ test("a refresh that changes no head revision does not refetch the diff", async 
       false,
       "the diff pane must not blank out across the refresh",
     );
+  } finally {
+    try {
+      cleanupDom?.();
+    } finally {
+      globalThis.fetch = originalFetch;
+      dom.window.close();
+      uninstallDom();
+    }
+  }
+});
+
+test("a refresh that moves the base revision refetches the diff", async () => {
+  const dom = installDom();
+  let cleanupDom: (() => void) | undefined;
+
+  const MOVED_BASE_SHA = "c".repeat(40);
+  const page1 = buildPage("morgan", {
+    authoredIds: [["PR_1", "acme/a", "The only PR", "octo"]],
+    hasNextPage: false,
+  });
+  // The teammate's merge advanced the base branch: same PR, same head, new
+  // base revision.
+  const page1AfterBaseMove = buildPage("morgan", {
+    authoredIds: [["PR_1", "acme/a", "The only PR", "octo"]],
+    baseRefOid: MOVED_BASE_SHA,
+    hasNextPage: false,
+  });
+
+  let diffCalls = 0;
+  let page1Calls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    if (url.endsWith("/api/github/status")) {
+      return Response.json(statusPayload("morgan"));
+    }
+    if (url.includes("/api/github/inbox?page=1")) {
+      page1Calls += 1;
+      return Response.json(page1Calls === 1 ? page1 : page1AfterBaseMove);
+    }
+    if (url.includes("/api/github/diff")) {
+      diffCalls += 1;
+      return Response.json(
+        diffCalls === 1
+          ? liveDiff()
+          : { ...liveDiff(), baseSha: MOVED_BASE_SHA },
+      );
+    }
+    return Response.json({ error: { message: `Unhandled ${url}` } }, { status: 404 });
+  };
+
+  try {
+    const { cleanup, fireEvent, render, waitFor, act } = await import(
+      "@testing-library/react"
+    );
+    cleanupDom = cleanup;
+
+    let view: ReturnType<typeof render> | undefined;
+    await act(async () => {
+      view = render(
+        createElement(PrWorkspace as ComponentType<WorkspaceProps>, {
+          initialDemoInbox: demoInbox,
+          initialNow: Date.parse(demoInbox.syncedAt),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      assert.equal(page1Calls, 1);
+      assert.equal(
+        view!.getByRole("button", { name: "Review" }).hasAttribute("disabled"),
+        false,
+        "the initial diff should finish loading",
+      );
+    });
+    assert.equal(diffCalls, 1);
+
+    // The base branch advanced on GitHub; submitting now would 409 with
+    // "Refresh before submitting the review". Refreshing must actually
+    // refetch the comparison — this is the escape hatch that used to hang
+    // off syncedAt.
+    fireEvent.click(
+      view!.getByRole("button", { name: "Refresh pull requests" }),
+    );
+    await waitFor(() => {
+      assert.equal(page1Calls, 2, "refresh should refetch the inbox");
+      assert.equal(
+        diffCalls,
+        2,
+        "a moved base revision must trigger a diff refetch",
+      );
+    });
+    await waitFor(() => {
+      assert.equal(
+        view!.getByRole("button", { name: "Review" }).hasAttribute("disabled"),
+        false,
+        "the refetched comparison should unlock the review button again",
+      );
+    });
   } finally {
     try {
       cleanupDom?.();
@@ -562,6 +665,7 @@ function cachedInboxFor(
         additions: 11,
         author: { avatarUrl: null, login: "octo", name: "Octo" },
         baseRefName: "main",
+        baseSha: BASE_SHA,
         changedFiles: 1,
         checkState: "SUCCESS",
         commentCount: 0,

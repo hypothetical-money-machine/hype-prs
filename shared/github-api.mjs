@@ -28,6 +28,7 @@ export const PR_FRAGMENT = `
       }
     }
     baseRefName
+    baseRefOid
     changedFiles
     commits(last: 1) {
       nodes {
@@ -76,6 +77,7 @@ export const PR_DETAIL_FRAGMENT = `
       }
     }
     baseRefName
+    baseRefOid
     changedFiles
     commits(last: 1) {
       nodes {

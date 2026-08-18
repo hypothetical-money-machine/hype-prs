@@ -197,29 +197,47 @@ export function PrWorkspace({
   useEffect(() => {
     liveSelectionRef.current = usingDemo ? null : selectedFromInbox;
   }, [selectedFromInbox, usingDemo]);
-  // A live diff stays fresh as long as it belongs to the selected pull
-  // request at its current head revision. The inbox `syncedAt` is
+  // A live diff is *current* when it belongs to the selected pull request at
+  // its present head revision — that is what gates rendering it and what
+  // attributes a load failure to the right row. The inbox `syncedAt` is
   // deliberately not part of this predicate: every refresh mints a new
-  // timestamp (two for a two-page load) without changing any SHA, and the
-  // server re-verifies the exact revisions at submit time anyway.
-  const liveDiffFresh =
+  // timestamp (two for a two-page load) without changing any SHA, and an
+  // unchanged pair of revisions must not abort-and-refetch an identical
+  // diff.
+  const liveDiffCurrent =
     !usingDemo &&
     Boolean(selectedPullRequest) &&
     liveDiffState.pullRequestId === selectedPullRequest?.id &&
     liveDiffState.diff.headSha === selectedPullRequest?.headSha;
-  const diffLoadFailed = liveDiffFresh && liveDiffState.status === "error";
+  // GitHub's base revision tracks the base ref tip, so a comparison whose
+  // base moved after it loaded would 409 at submit time with "Refresh before
+  // submitting the review". The inbox reports the current base SHA; when it
+  // disagrees with the loaded diff, submission is blocked and the diff-fetch
+  // effect below — keyed on that base SHA — refetches the comparison, so a
+  // refresh genuinely resolves the 409 instead of dead-ending. Either side
+  // missing its base SHA (a cached inbox row written before the field
+  // existed, degraded permission data, or a failed diff load) skips the
+  // check rather than declaring the diff permanently stale.
+  const selectedPrBaseSha = selectedPullRequest?.baseSha ?? "";
+  const liveDiffBaseCurrent =
+    !selectedPrBaseSha ||
+    !liveDiffState.diff.baseSha ||
+    liveDiffState.diff.baseSha === selectedPrBaseSha;
+  const diffLoadFailed = liveDiffCurrent && liveDiffState.status === "error";
   const displayedDiff = usingDemo
     ? (demoDiffs[selectedPullRequest?.id ?? ""] ?? EMPTY_DIFF)
-    : liveDiffFresh && liveDiffState.status === "loaded"
+    : liveDiffCurrent && liveDiffState.status === "loaded"
       ? liveDiffState.diff
       : EMPTY_DIFF;
   const diffLoading =
-    !usingDemo && Boolean(selectedPullRequest) && !liveDiffFresh;
+    !usingDemo && Boolean(selectedPullRequest) && !liveDiffCurrent;
+  const diffBaseStale = liveDiffCurrent && !liveDiffBaseCurrent;
   const reviewReady =
     usingDemo ||
     (Boolean(selectedPullRequest) &&
       !diffLoading &&
       !diffLoadFailed &&
+      !diffBaseStale &&
       !displayedDiff.truncated &&
       Boolean(displayedDiff.baseSha) &&
       displayedDiff.headSha === selectedPullRequest?.headSha);
@@ -518,10 +536,12 @@ export function PrWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The diff fetch is keyed on the selected pull request's identity and head
-  // revision — not on the inbox payload object or its syncedAt. A refresh
-  // that changes neither id nor head SHA must not abort and refetch an
-  // identical diff (auto-refresh would otherwise blank the pane every tick).
+  // The diff fetch is keyed on the selected pull request's identity and its
+  // head and base revisions — not on the inbox payload object or its
+  // syncedAt. A refresh that changes no SHA must not abort and refetch an
+  // identical diff (auto-refresh would otherwise blank the pane every tick),
+  // but a refresh that reports a moved base ref re-keys the effect so the
+  // stale comparison is refetched instead of dead-ending at a submit 409.
   const selectedPrId = selectedPullRequest?.id ?? "";
   const selectedPrHeadSha = selectedPullRequest?.headSha ?? "";
   const selectedPrNumber = selectedPullRequest?.number ?? 0;
@@ -564,6 +584,7 @@ export function PrWorkspace({
   }, [
     diffAttempt,
     handleSessionLoss,
+    selectedPrBaseSha,
     selectedPrHeadSha,
     selectedPrId,
     selectedPrNumber,
@@ -1192,6 +1213,7 @@ export function PrWorkspace({
           {selectedPullRequest ? (
             <>
               <PullRequestHeader
+                diffBaseStale={diffBaseStale}
                 diffLoadFailed={diffLoadFailed}
                 now={viewNow}
                 onBackToQueue={() => setMobilePane("queue")}
@@ -1709,6 +1731,7 @@ function PullRequestRow({
 }
 
 function PullRequestHeader({
+  diffBaseStale,
   diffLoadFailed,
   now,
   onBackToQueue,
@@ -1718,6 +1741,7 @@ function PullRequestHeader({
   reviewReady,
   usingDemo,
 }: {
+  diffBaseStale: boolean;
   diffLoadFailed: boolean;
   now: Date;
   onBackToQueue?(): void;
@@ -1787,7 +1811,9 @@ function PullRequestHeader({
                 ? "Review this pull request"
                 : diffLoadFailed
                   ? "The comparison failed to load. Retry the diff before reviewing."
-                  : "Wait for the current comparison to finish loading"
+                  : diffBaseStale
+                    ? "The base branch moved. Wait for the updated comparison, or refresh the queue."
+                    : "Wait for the current comparison to finish loading"
             }
             type="button"
           >

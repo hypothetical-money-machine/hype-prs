@@ -15,6 +15,7 @@ import {
 const OLD_HEAD = "a".repeat(40);
 const NEW_HEAD = "b".repeat(40);
 const CURRENT_HEAD = "c".repeat(40);
+const CURRENT_BASE = "d".repeat(40);
 const BASE_SHA = "d".repeat(40);
 const NEW_BASE_SHA = "e".repeat(40);
 
@@ -196,6 +197,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
         name: "Octo Cat",
       },
       baseRefName: "main",
+      baseRefOid: CURRENT_BASE,
       changedFiles: 3,
       comments: { totalCount: 7 },
       commits: {
@@ -253,6 +255,7 @@ test("live inbox cards map every displayed PR field from GitHub", async () => {
         name: "Octo Cat",
       },
       baseRefName: "main",
+      baseSha: CURRENT_BASE,
       changedFiles: 3,
       checkState: "NEUTRAL",
       commentCount: 7,

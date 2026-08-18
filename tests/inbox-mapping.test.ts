@@ -29,6 +29,7 @@ function buildNode(
     url: `https://github.com/${repository}/pull/${id}`,
     number: Number(id.replace(/[^0-9]/g, "")) || 1,
     baseRefName: "main",
+    baseRefOid: "b".repeat(40),
     headRefName: "feature",
     headRefOid: "a".repeat(40),
     isDraft: false,
@@ -152,6 +153,30 @@ test("mapInboxPayload combines the same PR across multiple buckets", () => {
   // takes precedence for viewerRelationship (it appears first in the
   // decision tree), but bucket membership is preserved through the merge.
   assert.ok(pullRequest);
+});
+
+test("mapInboxPayload carries the base ref tip through as baseSha", () => {
+  const currentBase = "c".repeat(40);
+  const data = {
+    authored: {
+      nodes: [
+        buildNode("PR_1", "acme/console", { baseRefOid: currentBase }),
+        // Degraded permission data (or an older cached shape) may omit the
+        // base revision entirely; the mapping must report "unknown" rather
+        // than invent a value the workspace would treat as authoritative.
+        buildNode("PR_2", "acme/console", { baseRefOid: undefined }),
+      ],
+    },
+    assigned: { nodes: [] },
+    reviewRequested: { nodes: [] },
+    reviewed: { nodes: [] },
+    rateLimit: null,
+  };
+  const mapped = mapInboxPayload(data, VIEWER, []);
+  const withBase = mapped.pullRequests.find((pr) => pr.id === "PR_1");
+  const withoutBase = mapped.pullRequests.find((pr) => pr.id === "PR_2");
+  assert.equal(withBase?.baseSha, currentBase);
+  assert.equal(withoutBase?.baseSha, "");
 });
 
 test("buildMappedInbox merges two pages, deduplicating by node id", () => {

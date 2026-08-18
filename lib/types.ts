@@ -33,6 +33,13 @@ export interface PullRequestSummary {
   additions: number;
   author: PullRequestActor;
   baseRefName: string;
+  /**
+   * Current tip of the base ref, as reported by the inbox query. Optional
+   * because cached payloads written before this field existed (and degraded
+   * permission data) may omit it; consumers must treat a missing value as
+   * "unknown", never as "unchanged".
+   */
+  baseSha?: string;
   changedFiles: number;
   checkState: CheckState;
   commentCount: number;

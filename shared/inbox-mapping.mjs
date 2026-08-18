@@ -151,6 +151,11 @@ export function mapPullRequest(node, buckets, viewerLogin) {
       name: node.author?.name ?? null,
     },
     baseRefName: node.baseRefName ?? "",
+    // GitHub reports the base ref's *current* tip here, so a refreshed inbox
+    // carries the new base revision whenever the base branch advances. The
+    // workspace compares it against the loaded diff's baseSha to know when
+    // the comparison must be refetched.
+    baseSha: node.baseRefOid ?? "",
     changedFiles: node.changedFiles ?? 0,
     checkState: normalizeCheckState(commit?.statusCheckRollup?.state),
     commentCount: node.comments?.totalCount ?? 0,
