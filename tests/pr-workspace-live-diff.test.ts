@@ -287,7 +287,7 @@ test("a refresh that changes no head revision does not refetch the diff", async 
       assert.equal(page1Calls, 2, "refresh should refetch the inbox");
       assert.match(
         document.querySelector(".queue-status-line")?.textContent ?? "",
-        /Last synced/,
+        /Synced /,
         "the refresh should complete",
       );
     });
