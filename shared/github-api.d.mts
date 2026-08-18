@@ -43,7 +43,7 @@ export class GitHubApiError extends Error {
 }
 
 export const INBOX_QUERY: string;
-export const INBOX_PAGE_QUERY: string;
+export const INBOX_BUCKET_QUERY: string;
 export const PR_FRAGMENT: string;
 
 export function getViewerWithToken(

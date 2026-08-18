@@ -98,7 +98,7 @@ export const PR_DETAIL_FRAGMENT = `
     headRefOid
     id
     isDraft
-    labels(first: 100) {
+    labels(first: 20) {
       nodes {
         name
       }
@@ -121,20 +121,6 @@ export const PR_DETAIL_FRAGMENT = `
       nameWithOwner
     }
     reviewDecision
-    reviewRequests(first: 20) {
-      nodes {
-        requestedReviewer {
-          __typename
-          ... on Team {
-            name
-            slug
-          }
-          ... on User {
-            login
-          }
-        }
-      }
-    }
     title
     updatedAt
     url
@@ -187,71 +173,18 @@ export const INBOX_QUERY = `
 // includes it is rejected with a document validation error before the server
 // runs any of the search aliases. Page 2 is therefore a follow-up that passes
 // each bucket's end cursor from page 1.
-export const INBOX_PAGE_QUERY = `
+export const INBOX_BUCKET_QUERY = `
   ${PR_DETAIL_FRAGMENT}
-  query HypePullRequestInboxPage(
-    $authoredQuery: String!
-    $assignedQuery: String!
-    $reviewQuery: String!
-    $reviewedQuery: String!
+  query HypePullRequestInboxBucket(
+    $searchQuery: String!
     $perBucket: Int!
-    $authoredAfter: String
-    $assignedAfter: String
-    $reviewAfter: String
-    $reviewedAfter: String
+    $after: String
   ) {
-    viewer {
-      avatarUrl
-      login
-      name
-    }
-    authored: search(
+    pullRequests: search(
       type: ISSUE
-      query: $authoredQuery
+      query: $searchQuery
       first: $perBucket
-      after: $authoredAfter
-    ) {
-      nodes {
-        ...PullRequestInboxItemDetail
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-    assigned: search(
-      type: ISSUE
-      query: $assignedQuery
-      first: $perBucket
-      after: $assignedAfter
-    ) {
-      nodes {
-        ...PullRequestInboxItemDetail
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-    reviewRequested: search(
-      type: ISSUE
-      query: $reviewQuery
-      first: $perBucket
-      after: $reviewAfter
-    ) {
-      nodes {
-        ...PullRequestInboxItemDetail
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-    reviewed: search(
-      type: ISSUE
-      query: $reviewedQuery
-      first: $perBucket
-      after: $reviewedAfter
+      after: $after
     ) {
       nodes {
         ...PullRequestInboxItemDetail
@@ -378,23 +311,92 @@ export async function loadInboxPageWithToken(
   signal,
 ) {
   const viewer = await getViewerWithToken(token, signal);
-  const variables = {
-    authoredQuery: `is:pull-request is:open author:${viewer.login} archived:false sort:updated-desc`,
-    assignedQuery: `is:pull-request is:open assignee:${viewer.login} archived:false sort:updated-desc`,
-    reviewQuery:
-      "is:pull-request is:open user-review-requested:@me archived:false sort:updated-desc",
-    reviewedQuery: `is:pull-request is:open reviewed-by:${viewer.login} archived:false sort:updated-desc`,
-    perBucket,
-    authoredAfter: cursors.authored ?? null,
-    assignedAfter: cursors.assigned ?? null,
-    reviewAfter: cursors.reviewRequested ?? null,
-    reviewedAfter: cursors.reviewed ?? null,
-  };
+  const bucketRequests = [
+    {
+      after: cursors.authored ?? null,
+      key: "authored",
+      searchQuery: `is:pull-request is:open author:${viewer.login} archived:false sort:updated-desc`,
+    },
+    {
+      after: cursors.assigned ?? null,
+      key: "assigned",
+      searchQuery: `is:pull-request is:open assignee:${viewer.login} archived:false sort:updated-desc`,
+    },
+    {
+      after: cursors.reviewRequested ?? null,
+      key: "reviewRequested",
+      searchQuery:
+        "is:pull-request is:open user-review-requested:@me archived:false sort:updated-desc",
+    },
+    {
+      after: cursors.reviewed ?? null,
+      key: "reviewed",
+      searchQuery: `is:pull-request is:open reviewed-by:${viewer.login} archived:false sort:updated-desc`,
+    },
+  ];
 
+  // GitHub terminates complex GraphQL requests that exceed its processing
+  // window with a 502/504. Keep each search independent so a user with many
+  // pull requests never multiplies four deeply nested connections into one
+  // timeout-prone query. The four read-only requests are safe to run together.
+  const results = await Promise.all(
+    bucketRequests.map((bucket) =>
+      loadInboxBucketWithToken(
+        token,
+        {
+          after: bucket.after,
+          perBucket,
+          searchQuery: bucket.searchQuery,
+        },
+        signal,
+      ),
+    ),
+  );
+  if (results.every((result) => result.permissionDenied && !result.usable)) {
+    throw new GitHubApiError(
+      "The GitHub App installation does not have access to the requested pull request data.",
+      { code: "github_403", status: 403 },
+    );
+  }
+
+  const byKey = Object.fromEntries(
+    bucketRequests.map((bucket, index) => [bucket.key, results[index]]),
+  );
+  const warnings = [
+    ...new Set(results.flatMap((result) => result.warnings)),
+  ];
+
+  return {
+    buckets: {
+      authored: byKey.authored.nodes,
+      assigned: byKey.assigned.nodes,
+      reviewRequested: byKey.reviewRequested.nodes,
+      reviewed: byKey.reviewed.nodes,
+    },
+    pageInfo: {
+      authored: byKey.authored.pageInfo,
+      assigned: byKey.assigned.pageInfo,
+      reviewRequested: byKey.reviewRequested.pageInfo,
+      reviewed: byKey.reviewed.pageInfo,
+    },
+    rateLimit: combineRateLimits(results),
+    viewer,
+    warnings,
+  };
+}
+
+async function loadInboxBucketWithToken(
+  token,
+  { after, perBucket, searchQuery },
+  signal,
+) {
   const response = await githubFetch(
     GITHUB_GRAPHQL_URL,
     {
-      body: JSON.stringify({ query: INBOX_PAGE_QUERY, variables }),
+      body: JSON.stringify({
+        query: INBOX_BUCKET_QUERY,
+        variables: { after, perBucket, searchQuery },
+      }),
       method: "POST",
       signal,
     },
@@ -411,58 +413,43 @@ export async function loadInboxPageWithToken(
   }
   const permissionDenied =
     graphqlErrors.length > 0 && graphqlErrors.every(isPermissionError);
-  const canUsePartialData =
-    permissionDenied && hasUsableInboxData(payload.data);
-  if (graphqlErrors.length > 0 && !canUsePartialData) {
+  const usable = Array.isArray(payload.data?.pullRequests?.nodes);
+  if (graphqlErrors.length > 0 && !permissionDenied) {
     const githubMessage =
       graphqlErrors[0]?.message ??
       "GitHub could not load the pull request inbox.";
-    throw new GitHubApiError(
-      permissionDenied
-        ? "The GitHub App installation does not have access to the requested pull request data."
-        : githubMessage,
-      {
-        code: permissionDenied ? "github_403" : "graphql_error",
-        githubMessage,
-        status: permissionDenied ? 403 : 502,
-      },
-    );
+    throw new GitHubApiError(githubMessage, {
+      code: "graphql_error",
+      githubMessage,
+      status: 502,
+    });
   }
-
   return {
-    buckets: {
-      authored: payload.data?.authored?.nodes ?? [],
-      assigned: payload.data?.assigned?.nodes ?? [],
-      reviewRequested: payload.data?.reviewRequested?.nodes ?? [],
-      reviewed: payload.data?.reviewed?.nodes ?? [],
+    nodes: payload.data?.pullRequests?.nodes ?? [],
+    pageInfo: payload.data?.pullRequests?.pageInfo ?? {
+      endCursor: null,
+      hasNextPage: false,
     },
-    pageInfo: {
-      authored: payload.data?.authored?.pageInfo ?? {
-        endCursor: null,
-        hasNextPage: false,
-      },
-      assigned: payload.data?.assigned?.pageInfo ?? {
-        endCursor: null,
-        hasNextPage: false,
-      },
-      reviewRequested: payload.data?.reviewRequested?.pageInfo ?? {
-        endCursor: null,
-        hasNextPage: false,
-      },
-      reviewed: payload.data?.reviewed?.pageInfo ?? {
-        endCursor: null,
-        hasNextPage: false,
-      },
-    },
-    rateLimit: payload.data?.rateLimit
-      ? {
-          cost: payload.data.rateLimit.cost,
-          remaining: payload.data.rateLimit.remaining,
-          resetAt: payload.data.rateLimit.resetAt,
-        }
-      : null,
-    viewer,
-    warnings: canUsePartialData ? [permissionWarning(graphqlErrors)] : [],
+    permissionDenied,
+    rateLimit: payload.data?.rateLimit ?? null,
+    usable,
+    warnings: permissionDenied ? [permissionWarning(graphqlErrors)] : [],
+  };
+}
+
+function combineRateLimits(results) {
+  const limits = results
+    .map((result) => result.rateLimit)
+    .filter(Boolean);
+  if (limits.length === 0) return null;
+  return {
+    cost: limits.reduce((total, limit) => total + limit.cost, 0),
+    remaining: Math.min(...limits.map((limit) => limit.remaining)),
+    resetAt: limits
+      .map((limit) => limit.resetAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? "",
   };
 }
 
