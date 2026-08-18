@@ -15,6 +15,7 @@ const GITHUB_TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 const MAX_INBOX_RESULTS_PER_BUCKET = 20;
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
 const MAX_FILE_PAGES = 30;
+const FILES_PER_PAGE = 100;
 
 export const PR_FRAGMENT = `
   fragment PullRequestInboxItem on PullRequest {
@@ -27,6 +28,7 @@ export const PR_FRAGMENT = `
       }
     }
     baseRefName
+    baseRefOid
     changedFiles
     commits(last: 1) {
       nodes {
@@ -75,6 +77,7 @@ export const PR_DETAIL_FRAGMENT = `
       }
     }
     baseRefName
+    baseRefOid
     changedFiles
     commits(last: 1) {
       nodes {
@@ -299,6 +302,16 @@ export async function getViewerWithToken(token, signal) {
   };
 }
 
+// GitHub reports installation permission denials as FORBIDDEN GraphQL errors.
+// Match the machine-readable type first so a wording change (or localized
+// variant) of the message cannot silently break github_403 classification.
+function isPermissionError(error) {
+  return (
+    error?.type === "FORBIDDEN" ||
+    error?.message === "Resource not accessible by integration"
+  );
+}
+
 export async function loadInboxWithToken(token, signal) {
   const viewer = await getViewerWithToken(token, signal);
   const variables = {
@@ -319,13 +332,16 @@ export async function loadInboxWithToken(token, signal) {
     token,
     { retryable: true },
   );
-  const payload = await response.json();
+  const payload = await readJsonResponse(response);
   const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+  if (!payload.data && graphqlErrors.length === 0) {
+    throw new GitHubApiError("GitHub returned an empty GraphQL response.", {
+      code: "graphql_error",
+      status: 502,
+    });
+  }
   const permissionDenied =
-    graphqlErrors.length > 0 &&
-    graphqlErrors.every(
-      (error) => error?.message === "Resource not accessible by integration",
-    );
+    graphqlErrors.length > 0 && graphqlErrors.every(isPermissionError);
   const canUsePartialData =
     permissionDenied && hasUsableInboxData(payload.data);
   if (graphqlErrors.length > 0 && !canUsePartialData) {
@@ -385,13 +401,16 @@ export async function loadInboxPageWithToken(
     token,
     { retryable: true },
   );
-  const payload = await response.json();
+  const payload = await readJsonResponse(response);
   const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+  if (!payload.data && graphqlErrors.length === 0) {
+    throw new GitHubApiError("GitHub returned an empty GraphQL response.", {
+      code: "graphql_error",
+      status: 502,
+    });
+  }
   const permissionDenied =
-    graphqlErrors.length > 0 &&
-    graphqlErrors.every(
-      (error) => error?.message === "Resource not accessible by integration",
-    );
+    graphqlErrors.length > 0 && graphqlErrors.every(isPermissionError);
   const canUsePartialData =
     permissionDenied && hasUsableInboxData(payload.data);
   if (graphqlErrors.length > 0 && !canUsePartialData) {
@@ -486,7 +505,8 @@ export async function loadPullDiffWithToken(
   ]);
 
   const limitedPatch = await readTextWithLimit(patchResponse, MAX_DIFF_BYTES);
-  const truncated = limitedPatch.truncated || files.length >= 3000;
+  const truncated =
+    limitedPatch.truncated || files.length >= MAX_FILE_PAGES * FILES_PER_PAGE;
 
   const afterResponse = await githubFetch(
     basePath,
@@ -510,7 +530,7 @@ export async function loadPullDiffWithToken(
   };
 }
 
-export async function submitReviewWithToken(token, input, signal) {
+export async function submitReviewWithToken(token, input, signal, viewerLogin = null) {
   if (!input || typeof input !== "object") {
     throw new GitHubApiError("Invalid review.", {
       code: "invalid_review",
@@ -582,6 +602,23 @@ export async function submitReviewWithToken(token, input, signal) {
     );
   }
 
+  // GitHub rejects self-approvals anyway, but with an opaque 422. The UI's
+  // author check is a heuristic (it degrades when the author maps to
+  // "ghost"), so enforce the rule here with the authoritative PR author the
+  // freshness check already fetched.
+  if (
+    event === "APPROVE" &&
+    typeof viewerLogin === "string" &&
+    viewerLogin &&
+    typeof current.user?.login === "string" &&
+    current.user.login.toLowerCase() === viewerLogin.toLowerCase()
+  ) {
+    throw new GitHubApiError("You cannot approve your own pull request.", {
+      code: "self_approval",
+      status: 422,
+    });
+  }
+
   const reviewResponse = await githubFetch(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
       repository,
@@ -597,7 +634,7 @@ export async function submitReviewWithToken(token, input, signal) {
     },
     token,
   );
-  const review = await reviewResponse.json();
+  const review = await readJsonResponse(reviewResponse);
   return { submittedAt: review.submitted_at ?? new Date().toISOString() };
 }
 
@@ -685,7 +722,7 @@ async function loadChangedFiles(token, basePath, signal) {
   const files = [];
   for (let page = 1; page <= MAX_FILE_PAGES; page += 1) {
     const response = await githubFetch(
-      `${basePath}/files?per_page=100&page=${page}`,
+      `${basePath}/files?per_page=${FILES_PER_PAGE}&page=${page}`,
       { method: "GET", signal },
       token,
     );
@@ -709,7 +746,7 @@ async function loadChangedFiles(token, basePath, signal) {
         status: file.status ?? "modified",
       })),
     );
-    if (payload.length < 100) break;
+    if (payload.length < FILES_PER_PAGE) break;
   }
   return files;
 }
@@ -998,7 +1035,9 @@ function normalizeTokenSet(payload) {
 }
 
 function validateRepositoryCoordinates({ owner, repository, number }) {
-  const validSegment = /^[A-Za-z0-9_.-]+$/;
+  // Reject "." and ".." explicitly: they pass encodeURIComponent unchanged
+  // and URL-normalize into a different, unintended API endpoint.
+  const validSegment = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
   if (
     typeof owner !== "string" ||
     typeof repository !== "string" ||

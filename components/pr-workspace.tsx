@@ -54,6 +54,7 @@ import type { DiffLayout } from "./diff-workspace";
 import { ThemeToggle, useThemePreference } from "./theme-toggle";
 import { useAutoRefresh, useRefreshInterval } from "./use-refresh-interval";
 import { createDemoInbox, demoDiffs } from "@/lib/demo-data";
+import { GatewayError } from "@/lib/gateway-error";
 import { beginWebConnection, gateway } from "@/lib/github-gateway";
 import { buildMappedInbox, fetchInboxPage } from "@/lib/inbox-pages";
 import type { InboxPage, InboxPageBucketPageInfoMap } from "@/lib/inbox-page-types";
@@ -143,9 +144,11 @@ export function PrWorkspace({
   const [clockNow, setClockNow] = useState(initialNow);
   const [liveDiffState, setLiveDiffState] = useState<{
     diff: PullRequestDiff;
-    inboxSyncedAt: string;
+    errorMessage?: string;
     pullRequestId: string;
-  }>({ diff: EMPTY_DIFF, inboxSyncedAt: "", pullRequestId: "" });
+    status: "loaded" | "error";
+  }>({ diff: EMPTY_DIFF, pullRequestId: "", status: "loaded" });
+  const [diffAttempt, setDiffAttempt] = useState(0);
   const [diffLayout, setDiffLayout] = useState<DiffLayout>("split");
   const [leftColumnsCollapsed, setLeftColumnsCollapsed] = useState(false);
   const [mobilePane, setMobilePane] = useState<"queue" | "detail">("queue");
@@ -180,29 +183,61 @@ export function PrWorkspace({
     },
   });
 
-  const selectedPullRequest =
+  const selectedFromInbox =
     inboxData.pullRequests.find(
       (pullRequest) => pullRequest.id === selectedId,
-    ) ??
-    inboxData.pullRequests[0] ??
-    null;
+    ) ?? null;
+  const selectedPullRequest =
+    selectedFromInbox ?? inboxData.pullRequests[0] ?? null;
+  // Latest live selection, readable from async work like `loadLiveInbox`
+  // without going through a stale closure. Demo rows are never tracked: a
+  // live refresh must not render a synthetic PR or fetch its diff against
+  // the real API.
+  const liveSelectionRef = useRef<PullRequestSummary | null>(null);
+  useEffect(() => {
+    liveSelectionRef.current = usingDemo ? null : selectedFromInbox;
+  }, [selectedFromInbox, usingDemo]);
+  // A live diff is *current* when it belongs to the selected pull request at
+  // its present head revision — that is what gates rendering it and what
+  // attributes a load failure to the right row. The inbox `syncedAt` is
+  // deliberately not part of this predicate: every refresh mints a new
+  // timestamp (two for a two-page load) without changing any SHA, and an
+  // unchanged pair of revisions must not abort-and-refetch an identical
+  // diff.
+  const liveDiffCurrent =
+    !usingDemo &&
+    Boolean(selectedPullRequest) &&
+    liveDiffState.pullRequestId === selectedPullRequest?.id &&
+    liveDiffState.diff.headSha === selectedPullRequest?.headSha;
+  // GitHub's base revision tracks the base ref tip, so a comparison whose
+  // base moved after it loaded would 409 at submit time with "Refresh before
+  // submitting the review". The inbox reports the current base SHA; when it
+  // disagrees with the loaded diff, submission is blocked and the diff-fetch
+  // effect below — keyed on that base SHA — refetches the comparison, so a
+  // refresh genuinely resolves the 409 instead of dead-ending. Either side
+  // missing its base SHA (a cached inbox row written before the field
+  // existed, degraded permission data, or a failed diff load) skips the
+  // check rather than declaring the diff permanently stale.
+  const selectedPrBaseSha = selectedPullRequest?.baseSha ?? "";
+  const liveDiffBaseCurrent =
+    !selectedPrBaseSha ||
+    !liveDiffState.diff.baseSha ||
+    liveDiffState.diff.baseSha === selectedPrBaseSha;
+  const diffLoadFailed = liveDiffCurrent && liveDiffState.status === "error";
   const displayedDiff = usingDemo
     ? (demoDiffs[selectedPullRequest?.id ?? ""] ?? EMPTY_DIFF)
-    : liveDiffState.pullRequestId === selectedPullRequest?.id &&
-        liveDiffState.inboxSyncedAt === inboxData.syncedAt &&
-        liveDiffState.diff.headSha === selectedPullRequest?.headSha
+    : liveDiffCurrent && liveDiffState.status === "loaded"
       ? liveDiffState.diff
       : EMPTY_DIFF;
   const diffLoading =
-    !usingDemo &&
-    Boolean(selectedPullRequest) &&
-    (liveDiffState.pullRequestId !== selectedPullRequest?.id ||
-      liveDiffState.inboxSyncedAt !== inboxData.syncedAt ||
-      liveDiffState.diff.headSha !== selectedPullRequest?.headSha);
+    !usingDemo && Boolean(selectedPullRequest) && !liveDiffCurrent;
+  const diffBaseStale = liveDiffCurrent && !liveDiffBaseCurrent;
   const reviewReady =
     usingDemo ||
     (Boolean(selectedPullRequest) &&
       !diffLoading &&
+      !diffLoadFailed &&
+      !diffBaseStale &&
       !displayedDiff.truncated &&
       Boolean(displayedDiff.baseSha) &&
       displayedDiff.headSha === selectedPullRequest?.headSha);
@@ -225,6 +260,41 @@ export function PrWorkspace({
         ? "recent"
         : "attention",
     );
+  }, []);
+
+  // A live call answered with `not_connected` means the GitHub session is
+  // gone (expired, revoked, or disconnected in another tab). An error banner
+  // over the stale workspace would imply the data is still live, so drop the
+  // workspace and return to the login screen instead. The cached inbox stays
+  // in localStorage: hydration is keyed by viewer login, so the same viewer
+  // gets an instant queue after signing back in.
+  const handleSessionLoss = useCallback((nextError: unknown): boolean => {
+    if (
+      !(nextError instanceof GatewayError) ||
+      nextError.code !== "not_connected"
+    ) {
+      return false;
+    }
+    // Bump the generation so in-flight page fetches stop writing into state.
+    inboxGenerationRef.current += 1;
+    setConnection((current) => ({
+      ...current,
+      connected: false,
+      expiresAt: null,
+      viewer: null,
+    }));
+    setUsingDemo(false);
+    setInboxData(EMPTY_INBOX);
+    setWarning(null);
+    setSelectedId("");
+    setLiveDiffState({ diff: EMPTY_DIFF, pullRequestId: "", status: "loaded" });
+    setSyncing(false);
+    setLoadingFirstPage(false);
+    setLoadingSecondPage(false);
+    setReviewOpen(false);
+    setError("Your GitHub session ended. Sign in again to continue.");
+    setLaunchView("login");
+    return true;
   }, []);
 
   // Persist only the fully merged payload. Persisting after page 1 would
@@ -290,6 +360,7 @@ export function PrWorkspace({
       firstPage = (await fetchInboxPage({ page: 1 })).page;
     } catch (nextError) {
       if (inboxGenerationRef.current === generation) {
+        if (handleSessionLoss(nextError)) return;
         setError(messageFrom(nextError));
         setSyncing(false);
         setLoadingFirstPage(false);
@@ -300,15 +371,32 @@ export function PrWorkspace({
     inboxPagesRef.current.pages = [firstPage];
     inboxPagesRef.current.cursors = firstPage.pageInfo;
     const partialMerged = buildMappedInbox({ pages: [firstPage] });
+    const anyHasNextPage = Object.values(firstPage.pageInfo).some(
+      (info) => info?.hasNextPage,
+    );
     if (partialMerged) {
-      setInboxData(partialMerged);
+      // While page 2 is still in flight, a selection that lives on page 2
+      // would vanish from the partial list and the detail pane would snap to
+      // the first page-1 row (fetching its diff) until the merge lands. Keep
+      // the currently selected PR in the rendered list through that window;
+      // the final merge replaces it with the authoritative row.
+      const retained = liveSelectionRef.current;
+      const withRetainedSelection =
+        anyHasNextPage &&
+        retained &&
+        !partialMerged.pullRequests.some(
+          (pullRequest) => pullRequest.id === retained.id,
+        )
+          ? {
+              ...partialMerged,
+              pullRequests: [...partialMerged.pullRequests, retained],
+            }
+          : partialMerged;
+      setInboxData(withRetainedSelection);
       setWarning(partialMerged.warnings?.[0] ?? null);
     }
     setLoadingFirstPage(false);
 
-    const anyHasNextPage = Object.values(firstPage.pageInfo).some(
-      (info) => info?.hasNextPage,
-    );
     if (!anyHasNextPage) {
       if (partialMerged && options.resetSelection) {
         setSelectedId((current) =>
@@ -338,6 +426,7 @@ export function PrWorkspace({
       ).page;
     } catch (nextError) {
       if (inboxGenerationRef.current === generation) {
+        if (handleSessionLoss(nextError)) return;
         setError(messageFrom(nextError));
         setSyncing(false);
         setLoadingSecondPage(false);
@@ -447,41 +536,68 @@ export function PrWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The diff fetch is keyed on the selected pull request's identity and its
+  // head and base revisions — not on the inbox payload object or its
+  // syncedAt. A refresh that changes no SHA must not abort and refetch an
+  // identical diff (auto-refresh would otherwise blank the pane every tick),
+  // but a refresh that reports a moved base ref re-keys the effect so the
+  // stale comparison is refetched instead of dead-ending at a submit 409.
+  const selectedPrId = selectedPullRequest?.id ?? "";
+  const selectedPrHeadSha = selectedPullRequest?.headSha ?? "";
+  const selectedPrNumber = selectedPullRequest?.number ?? 0;
+  const selectedPrRepository = selectedPullRequest?.repository ?? "";
   useEffect(() => {
-    if (!selectedPullRequest || usingDemo) return;
+    if (!selectedPrId || usingDemo) return;
 
-    const [owner, repository] = selectedPullRequest.repository.split("/");
+    const [owner, repository] = selectedPrRepository.split("/");
     if (!owner || !repository) return;
     const controller = new AbortController();
-    const pullRequestId = selectedPullRequest.id;
-    const inboxSyncedAt = inboxData.syncedAt;
     gateway()
       .getPullDiff({
-        number: selectedPullRequest.number,
+        number: selectedPrNumber,
         owner,
         repository,
       }, controller.signal)
       .then((nextDiff) => {
         if (!controller.signal.aborted) {
-          setLiveDiffState({ diff: nextDiff, inboxSyncedAt, pullRequestId });
+          setLiveDiffState({
+            diff: nextDiff,
+            pullRequestId: selectedPrId,
+            status: "loaded",
+          });
         }
       })
       .catch((nextError) => {
-        if (!controller.signal.aborted) {
-          setError(messageFrom(nextError));
-          setLiveDiffState({
-            diff: {
-              ...EMPTY_DIFF,
-              headSha: selectedPullRequest.headSha,
-              truncated: true,
-            },
-            inboxSyncedAt,
-            pullRequestId,
-          });
-        }
+        if (controller.signal.aborted) return;
+        if (handleSessionLoss(nextError)) return;
+        // The failure is stored on the diff state itself so the diff pane
+        // can show a retryable load-failed panel; `truncated` is reserved
+        // for diffs GitHub genuinely cannot render.
+        setLiveDiffState({
+          diff: { ...EMPTY_DIFF, headSha: selectedPrHeadSha },
+          errorMessage: messageFrom(nextError),
+          pullRequestId: selectedPrId,
+          status: "error",
+        });
       });
     return () => controller.abort();
-  }, [inboxData.syncedAt, selectedPullRequest, usingDemo]);
+  }, [
+    diffAttempt,
+    handleSessionLoss,
+    selectedPrBaseSha,
+    selectedPrHeadSha,
+    selectedPrId,
+    selectedPrNumber,
+    selectedPrRepository,
+    usingDemo,
+  ]);
+
+  const retryDiffLoad = useCallback(() => {
+    // Clearing the stored diff flips the pane back to its loading state
+    // while the re-keyed effect issues a fresh request.
+    setLiveDiffState({ diff: EMPTY_DIFF, pullRequestId: "", status: "loaded" });
+    setDiffAttempt((attempt) => attempt + 1);
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -609,8 +725,8 @@ export function PrWorkspace({
       setSelectedId("");
       setLiveDiffState({
         diff: EMPTY_DIFF,
-        inboxSyncedAt: "",
         pullRequestId: "",
+        status: "loaded",
       });
       setConnectionDialog(false);
       setLaunchView("login");
@@ -691,15 +807,22 @@ export function PrWorkspace({
     }
 
     const [owner, repository] = selectedPullRequest.repository.split("/");
-    await gateway().submitReview({
-      baseCommitId: displayedDiff.baseSha,
-      body,
-      commitId: displayedDiff.headSha,
-      event,
-      number: selectedPullRequest.number,
-      owner,
-      repository,
-    });
+    try {
+      await gateway().submitReview({
+        baseCommitId: displayedDiff.baseSha,
+        body,
+        commitId: displayedDiff.headSha,
+        event,
+        number: selectedPullRequest.number,
+        owner,
+        repository,
+      });
+    } catch (nextError) {
+      // A lost session routes back to the login screen; anything else is the
+      // review dialog's error to display.
+      if (handleSessionLoss(nextError)) return;
+      throw nextError;
+    }
     setReviewOpen(false);
     setToast(`${reviewEventLabel(event)} submitted to GitHub`);
     await refreshInbox();
@@ -1090,6 +1213,8 @@ export function PrWorkspace({
           {selectedPullRequest ? (
             <>
               <PullRequestHeader
+                diffBaseStale={diffBaseStale}
+                diffLoadFailed={diffLoadFailed}
                 now={viewNow}
                 onBackToQueue={() => setMobilePane("queue")}
                 onOpenInGitHub={() => void openSelectedInGitHub()}
@@ -1110,9 +1235,16 @@ export function PrWorkspace({
                   diff={displayedDiff}
                   fileBrowserCollapsed={leftColumnsCollapsed}
                   layout={diffLayout}
+                  loadErrorMessage={
+                    diffLoadFailed
+                      ? (liveDiffState.errorMessage ??
+                        "The diff could not be loaded.")
+                      : null
+                  }
                   loading={diffLoading}
                   onLayoutChange={setDiffLayout}
                   onOpenInGitHub={() => void openSelectedInGitHub()}
+                  onRetryLoad={retryDiffLoad}
                   themePreference={themePreference ?? "system"}
                 />
               </Suspense>
@@ -1599,6 +1731,8 @@ function PullRequestRow({
 }
 
 function PullRequestHeader({
+  diffBaseStale,
+  diffLoadFailed,
   now,
   onBackToQueue,
   onOpenInGitHub,
@@ -1607,6 +1741,8 @@ function PullRequestHeader({
   reviewReady,
   usingDemo,
 }: {
+  diffBaseStale: boolean;
+  diffLoadFailed: boolean;
   now: Date;
   onBackToQueue?(): void;
   onOpenInGitHub(): void;
@@ -1673,7 +1809,11 @@ function PullRequestHeader({
             title={
               reviewReady
                 ? "Review this pull request"
-                : "Wait for the current comparison to finish loading"
+                : diffLoadFailed
+                  ? "The comparison failed to load. Retry the diff before reviewing."
+                  : diffBaseStale
+                    ? "The base branch moved. Wait for the updated comparison, or refresh the queue."
+                    : "Wait for the current comparison to finish loading"
             }
             type="button"
           >

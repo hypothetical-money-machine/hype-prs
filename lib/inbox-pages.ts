@@ -1,6 +1,7 @@
 "use client";
 
 import { mapInboxPayload, mergeInboxPageBuckets } from "@/shared/inbox-mapping.mjs";
+import { GatewayError } from "./gateway-error";
 import type { InboxPayload } from "./types";
 import type { InboxPage, InboxPageBucketPageInfoMap } from "./inbox-page-types";
 
@@ -41,8 +42,10 @@ export async function fetchInboxPage(
   });
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => null);
-    throw new Error(
+    throw new GatewayError(
       errorPayload?.error?.message ?? `Request failed (${response.status}).`,
+      errorPayload?.error?.code ?? null,
+      response.status,
     );
   }
   return {

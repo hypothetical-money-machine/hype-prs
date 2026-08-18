@@ -124,7 +124,7 @@ test("switching pull requests clears the previously selected file", async () => 
         name: /Guard webhook retries with idempotency keys/,
       }),
     );
-    const firstPullRequestFile = await view.findByTitle("src/change.ts");
+    const firstPullRequestFile = await view.findByTitle("src/change.tsx");
     fireEvent.click(firstPullRequestFile);
     assert.equal(
       firstPullRequestFile.getAttribute("aria-selected"),
@@ -136,7 +136,7 @@ test("switching pull requests clears the previously selected file", async () => 
         name: /Refresh status badge contrast and focus states/,
       }),
     );
-    const secondPullRequestFile = await view.findByTitle("src/change.ts");
+    const secondPullRequestFile = await view.findByTitle("src/change.tsx");
     assert.equal(
       secondPullRequestFile.getAttribute("aria-selected"),
       "false",

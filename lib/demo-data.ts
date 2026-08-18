@@ -5,6 +5,10 @@ import type {
   PullRequestSummary,
 } from "./types";
 
+// Shared by the demo pull requests and their diffs so the demo inbox always
+// agrees with the comparison it renders.
+const DEMO_BASE_SHA = "demo-base-revision";
+
 export const createDemoPullRequests = (
   now: number = Date.now(),
 ): PullRequestSummary[] => {
@@ -18,6 +22,7 @@ export const createDemoPullRequests = (
       additions: 184,
       author: { login: "maya-chen", name: "Maya Chen" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 7,
       checkState: "SUCCESS",
       commentCount: 6,
@@ -48,6 +53,7 @@ export const createDemoPullRequests = (
       additions: 96,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 4,
       checkState: "FAILURE",
       commentCount: 11,
@@ -78,6 +84,7 @@ export const createDemoPullRequests = (
       additions: 58,
       author: { login: "omar-s", name: "Omar Singh" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 3,
       checkState: "SUCCESS",
       commentCount: 3,
@@ -108,6 +115,7 @@ export const createDemoPullRequests = (
       additions: 211,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 9,
       checkState: "SUCCESS",
       commentCount: 8,
@@ -138,6 +146,7 @@ export const createDemoPullRequests = (
       additions: 73,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 5,
       checkState: "PENDING",
       commentCount: 1,
@@ -168,6 +177,7 @@ export const createDemoPullRequests = (
       additions: 402,
       author: { login: "nina-p", name: "Nina Patel" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 13,
       checkState: "NEUTRAL",
       commentCount: 2,
@@ -198,6 +208,7 @@ export const createDemoPullRequests = (
       additions: 37,
       author: { login: "liam-k", name: "Liam Kim" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 2,
       checkState: "SUCCESS",
       commentCount: 9,
@@ -228,6 +239,7 @@ export const createDemoPullRequests = (
       additions: 126,
       author: { login: "morgan", name: "Morgan" },
       baseRefName: "main",
+      baseSha: DEMO_BASE_SHA,
       changedFiles: 6,
       checkState: "SUCCESS",
       commentCount: 4,
@@ -416,38 +428,49 @@ index 3c36a3d..c40f0f9 100644
  @media (prefers-reduced-motion: reduce) {
    .review-row {
      transition: none;
+diff --git a/docs/keyboard-shortcuts.md b/docs/keyboard-shortcuts.md
+index 5b1c9d2..8f42e17 100644
+--- a/docs/keyboard-shortcuts.md
++++ b/docs/keyboard-shortcuts.md
+@@ -1,4 +1,9 @@
+ # Keyboard shortcuts
+\u0020
+-Use the arrow keys to move through the queue.
+-Press Enter to open a pull request.
++| Key | Action |
++| --- | --- |
++| J | Move down the queue |
++| K | Move up the queue |
++| Enter | Open the focused pull request |
++
++Shortcuts are ignored while a text field has focus.
 `;
+
+// The generic demo diffs reuse the console patch with its review-queue files
+// renamed. The changed-file list must stay in lockstep with the rewritten
+// patch headers: a file the patch does not mention renders as "no textual
+// patch" when clicked in the tree.
+const renameConsoleFile = (filename: string): string =>
+  filename.replaceAll("src/features/inbox/ReviewQueue", "src/change");
 
 // Diffs only read timestamp-free fields, so one snapshot is fine here.
 export const demoDiffs: Record<string, PullRequestDiff> = Object.fromEntries(
   createDemoPullRequests().map((pullRequest) => [
     pullRequest.id,
     {
-      baseSha: "demo-base-revision",
+      baseSha: DEMO_BASE_SHA,
       files:
         pullRequest.id === "demo-842"
           ? consoleFiles
-          : [
-              {
-                additions: pullRequest.additions,
-                blobUrl: null,
-                changes: pullRequest.additions + pullRequest.deletions,
-                deletions: pullRequest.deletions,
-                filename: "src/change.ts",
-                patch: null,
-                previousFilename: null,
-                rawUrl: null,
-                status: "modified",
-              },
-            ],
+          : consoleFiles.map((file) => ({
+              ...file,
+              filename: renameConsoleFile(file.filename),
+            })),
       headSha: pullRequest.headSha,
       patch:
         pullRequest.id === "demo-842"
           ? consolePatch
-          : consolePatch.replaceAll(
-              "src/features/inbox/ReviewQueue",
-              "src/change",
-            ),
+          : renameConsoleFile(consolePatch),
       truncated: false,
     },
   ]),

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GatewayError } from "../lib/gateway-error";
 import {
   buildMappedInbox,
   fetchInboxPage,
@@ -28,6 +29,7 @@ function buildNode(
     url: `https://github.com/${repository}/pull/${id}`,
     number: Number(id.replace(/[^0-9]/g, "")) || 1,
     baseRefName: "main",
+    baseRefOid: "b".repeat(40),
     headRefName: "feature",
     headRefOid: "a".repeat(40),
     isDraft: false,
@@ -153,6 +155,30 @@ test("mapInboxPayload combines the same PR across multiple buckets", () => {
   assert.ok(pullRequest);
 });
 
+test("mapInboxPayload carries the base ref tip through as baseSha", () => {
+  const currentBase = "c".repeat(40);
+  const data = {
+    authored: {
+      nodes: [
+        buildNode("PR_1", "acme/console", { baseRefOid: currentBase }),
+        // Degraded permission data (or an older cached shape) may omit the
+        // base revision entirely; the mapping must report "unknown" rather
+        // than invent a value the workspace would treat as authoritative.
+        buildNode("PR_2", "acme/console", { baseRefOid: undefined }),
+      ],
+    },
+    assigned: { nodes: [] },
+    reviewRequested: { nodes: [] },
+    reviewed: { nodes: [] },
+    rateLimit: null,
+  };
+  const mapped = mapInboxPayload(data, VIEWER, []);
+  const withBase = mapped.pullRequests.find((pr) => pr.id === "PR_1");
+  const withoutBase = mapped.pullRequests.find((pr) => pr.id === "PR_2");
+  assert.equal(withBase?.baseSha, currentBase);
+  assert.equal(withoutBase?.baseSha, "");
+});
+
 test("buildMappedInbox merges two pages, deduplicating by node id", () => {
   const first = pageOf({
     authoredIds: ["1", "2"],
@@ -220,4 +246,45 @@ test("fetchInboxPage throws with the server-provided error message on failure", 
     fetchInboxPage({ page: 1, fetchImpl }),
     /Rate limit reached/,
   );
+});
+
+test("fetchInboxPage preserves the server's typed error code and status", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "not_connected",
+          message: "Connect an approved GitHub App to continue.",
+        },
+      }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    );
+  await assert.rejects(
+    fetchInboxPage({ page: 1, fetchImpl }),
+    (error: unknown) =>
+      error instanceof GatewayError &&
+      error.code === "not_connected" &&
+      error.status === 401 &&
+      error.message === "Connect an approved GitHub App to continue.",
+  );
+});
+
+test("fetchInboxPage reports a code-less failure without inventing a code", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response("upstream exploded", { status: 502 });
+  await assert.rejects(
+    fetchInboxPage({ page: 1, fetchImpl }),
+    (error: unknown) =>
+      error instanceof GatewayError &&
+      error.code === null &&
+      error.status === 502 &&
+      error.message === "Request failed (502).",
+  );
+});
+
+test("mapInboxPayload tolerates a missing data object", () => {
+  const mapped = mapInboxPayload(undefined, VIEWER, []);
+  assert.deepEqual(mapped.pullRequests, []);
+  assert.equal(mapped.rateLimit, null);
+  assert.equal(mapped.viewer, VIEWER);
 });

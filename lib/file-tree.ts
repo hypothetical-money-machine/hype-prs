@@ -32,7 +32,10 @@ export function buildFileTree(files: ChangedFile[]): FileTreeNode[] {
 
     for (let index = 0; index < segments.length - 1; index += 1) {
       const name = segments[index];
-      const id = segments.slice(0, index + 1).join("/");
+      // Ids are namespaced by node kind: a changed file literally named
+      // "docs" must not collide with the directory created for "docs/a.md",
+      // since ids feed React keys and the collapsed-directory set.
+      const id = `dir:${segments.slice(0, index + 1).join("/")}`;
       let child = directory.children.find(
         (node): node is FileTreeDirectory =>
           node.type === "directory" && node.name === name,
@@ -46,7 +49,7 @@ export function buildFileTree(files: ChangedFile[]): FileTreeNode[] {
 
     directory.children.push({
       file,
-      id: file.filename,
+      id: `file:${file.filename}`,
       name: segments.at(-1) ?? file.filename,
       type: "file",
     });

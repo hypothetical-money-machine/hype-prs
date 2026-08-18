@@ -83,6 +83,7 @@ export function submitReviewWithToken(
     repository: string;
   },
   signal?: AbortSignal,
+  viewerLogin?: string | null,
 ): Promise<{ submittedAt: string }>;
 
 export function exchangeAuthorizationCode(

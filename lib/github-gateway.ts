@@ -1,5 +1,6 @@
 "use client";
 
+import { GatewayError } from "./gateway-error";
 import type {
   ConnectionStatus,
   GitHubBridge,
@@ -75,8 +76,10 @@ async function requestJson<T = void>(
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(
+    throw new GatewayError(
       payload?.error?.message ?? `Request failed (${response.status}).`,
+      payload?.error?.code ?? null,
+      response.status,
     );
   }
   return payload as T;
